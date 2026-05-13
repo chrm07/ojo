@@ -23,8 +23,12 @@ switch ($action) {
     case 'add_checklist_task': echo json_encode($app->addChecklistTask($_POST['project_id'], $_POST['category'], $_POST['task_name'])); break;
     case 'update_checklist_status': echo json_encode($app->updateChecklistStatus($_POST['task_id'], $_POST['status'])); break;
     case 'edit_checklist_task': echo json_encode($app->editChecklistTask($_POST['task_id'], $_POST['task_name'])); break;
+    case 'update_task_cost': echo json_encode($app->updateTaskCost($_POST['task_id'], $_POST['cost'])); break;
     case 'delete_checklist_task': echo json_encode($app->deleteChecklistTask($_POST['task_id'])); break;
     case 'delete_checklist_category': echo json_encode($app->deleteChecklistCategory($_POST['project_id'], $_POST['category'])); break;
+
+    case 'assign_worker': echo json_encode($app->assignWorker($_POST['project_id'], $_POST['category'], $_POST['worker'])); break;
+    case 'remove_worker': echo json_encode($app->removeWorkerAssignment($_POST['project_id'], $_POST['category'])); break;
 
     case 'get_suppliers': echo json_encode($app->getSuppliers()); break;
     case 'add_supplier': echo json_encode($app->addSupplier($_POST['name'], $_POST['materials'], $_POST['contact'], $_POST['email'])); break;
@@ -43,13 +47,17 @@ switch ($action) {
     case 'add_award_cost': echo json_encode($app->addAwardCost($_POST['desc'], $_POST['amount'])); break;
     case 'delete_award_cost': echo json_encode($app->deleteAwardCost($_POST['id'])); break;
 
+    case 'get_all_completed_tasks': echo json_encode($app->getAllCompletedTasks()); break;
     case 'get_payroll': echo json_encode($app->getPayroll()); break;
-    case 'add_payroll': echo json_encode($app->addPayroll($_POST['date'], $_POST['name'], $_POST['job_desc'], $_POST['days'], $_POST['deductions'])); break;
+    
+    // UPDATED PAYROLL ACTION
+    case 'add_payroll': echo json_encode($app->addPayroll($_POST['date'], $_POST['name'], $_POST['job_desc'], $_POST['award'], $_POST['advance'])); break;
+    
     case 'archive_and_reset_payroll': echo json_encode($app->archiveAndResetPayroll()); break;
     case 'get_payroll_history': echo json_encode($app->getPayrollHistory()); break;
 
     case 'get_all_ntps': echo json_encode($app->getAllNTPs()); break;
-    case 'upload_ntp_file': echo json_encode($app->uploadNTPFile($_POST['project_id'], $_POST['ticket'], $_POST['date'], $_POST['award_cost'], $_POST['due_date'], $_POST['accept_date'], $_FILES['file'])); break;
+    case 'upload_ntp_file': echo json_encode($app->uploadNTPFile($_POST['project_id'], $_POST['ticket'], $_POST['date'], $_POST['award_cost'], $_POST['due_date'], $_POST['accept_date'], $_FILES['file'] ?? null)); break;
 
     default: echo json_encode(['status' => 'error', 'message' => 'Invalid action']);
 }
