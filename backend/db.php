@@ -8,7 +8,6 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // Auto-seed default admin dun sa BAGONG 'admins' table
     $stmt = $pdo->prepare("SELECT id FROM admins WHERE email = ?");
     $stmt->execute(['admin@construction.com']);
     if ($stmt->rowCount() == 0) {
