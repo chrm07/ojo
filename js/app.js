@@ -27,16 +27,36 @@ const app = {
             const res = await fetch('backend/api.php', { method: 'POST', body: bodyData });
             const text = await res.text();
             try { return JSON.parse(text); } 
-            catch(e) { console.error("Backend Error:", text); return { status: 'error', message: 'DB Error: Run Step 1 (SQL).' }; }
+            catch(e) { console.error("Backend Error:", text); return { status: 'error', message: 'DB Error: Check Backend.' }; }
         } catch(e) { console.error("Network Error:", e); return { status: 'error', message: 'Failed to connect.' }; }
     },
 
     checkSession: async function() { const res = await this.request('check_session'); if (res.logged_in) { document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-layout').style.display = 'flex'; this.showModule('dashboard'); } },
+    
     handleAuth: async function() {
-        const res = await this.request('login', { email: document.getElementById('auth-email').value, password: document.getElementById('auth-pass').value });
-        if (res.status === 'success') { document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-layout').style.display = 'flex'; this.showModule('dashboard'); } else { this.showToast(res.message, 'error'); }
+        const emailInput = document.getElementById('auth-email');
+        const passInput = document.getElementById('auth-pass');
+        emailInput.classList.remove('input-error'); passInput.classList.remove('input-error');
+
+        const res = await this.request('login', { email: emailInput.value, password: passInput.value });
+        if (res.status === 'success') { 
+            document.getElementById('auth-screen').style.display = 'none'; 
+            document.getElementById('app-layout').style.display = 'flex'; 
+            this.showModule('dashboard'); 
+        } else { 
+            this.showToast(res.message, 'error'); 
+            emailInput.classList.add('input-error'); passInput.classList.add('input-error');
+        }
     },
+    
     logout: async function() { await this.request('logout'); location.reload(); },
+
+    togglePassword: function() {
+        const passInput = document.getElementById('auth-pass');
+        const eyeIcon = document.getElementById('toggle-password');
+        if(passInput.type === 'password') { passInput.type = 'text'; eyeIcon.classList.remove('fa-eye'); eyeIcon.classList.add('fa-eye-slash'); } 
+        else { passInput.type = 'password'; eyeIcon.classList.remove('fa-eye-slash'); eyeIcon.classList.add('fa-eye'); }
+    },
 
     showToast: function(message, type = 'success') {
         const existingToast = document.querySelector('.toast-notification');
@@ -46,7 +66,7 @@ const app = {
         const icon = type === 'error' ? '<i class="fa-solid fa-circle-exclamation" style="color:var(--danger); font-size:1.2rem;"></i>' : '<i class="fa-solid fa-circle-check" style="color:var(--success); font-size:1.2rem;"></i>';
         toast.innerHTML = `${icon} <span>${message}</span>`;
         document.body.appendChild(toast);
-        setTimeout(() => { toast.style.animation = 'slideInRight 0.3s reverse forwards'; setTimeout(() => toast.remove(), 300); }, 4000);
+        setTimeout(() => { toast.style.animation = 'slideInRight 0.3s reverse forwards'; setTimeout(() => toast.remove(), 4000); }, 4000);
     },
 
     openModal: function(modalId) {
@@ -67,6 +87,7 @@ const app = {
     showModule: function(id) {
         document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
         document.getElementById('mod-' + id).classList.add('active');
+        
         document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
         let activeLi = document.querySelector(`.nav-links li[data-module='${id}']`);
         let cleanTitle = activeLi ? activeLi.textContent.trim() : 'Dashboard';
@@ -79,12 +100,11 @@ const app = {
         if(id === 'materials') this.loadSuppliersDashboard();
         if(id === 'users') { this.loadProjectOptionsForManpower(); this.loadManpowerFolders(); }
         if(id === 'award_costs') this.loadAwardCosts();
-        if(id === 'payroll') { this.backToActivePayroll(); this.renderPayrollTab(); this.populatePayrollDatalist(); }
+        if(id === 'payroll') { this.backToActivePayroll(); this.renderPayrollTab(); this.populatePayrollDatalists(); }
+        if(id === 'cash_release') this.loadCashRelease(); 
         if(id === 'global_ntp') this.loadGlobalNTP();
 
-        document.getElementById('global-search-results').style.display = 'none';
-        document.getElementById('clear-search-btn').style.display = 'none';
-        document.getElementById('global-search-input').value = '';
+        this.clearGlobalSearch();
     },
 
     loadDashboard: async function() {
@@ -121,25 +141,45 @@ const app = {
     },
 
     handleGlobalSearch: async function(query) {
-        const searchContainer = document.getElementById('global-search-results'); const content = document.getElementById('search-results-content'); const clearBtn = document.getElementById('clear-search-btn');
-        if (!query || query.trim() === '') { searchContainer.style.display = 'none'; clearBtn.style.display = 'none'; return; }
-        clearBtn.style.display = 'block'; searchContainer.style.display = 'block';
+        const searchContainer = document.getElementById('global-search-results'); 
+        const content = document.getElementById('search-results-content'); 
+        const clearBtn = document.getElementById('clear-search-btn'); 
+        const deadlinesContainer = document.getElementById('upcoming-deadlines-container');
         
-        const queryDisplay = document.getElementById('search-query-display'); if(queryDisplay) queryDisplay.innerText = query;
-        let resultsHTML = ''; const projects = window.allProjectsData || await this.request('get_projects'); const users = await this.request('get_active_manpower');
+        if (!query || query.trim() === '') { 
+            searchContainer.style.display = 'none'; clearBtn.style.display = 'none'; 
+            if(deadlinesContainer) deadlinesContainer.style.display = 'block'; 
+            return; 
+        }
+
+        clearBtn.style.display = 'block'; searchContainer.style.display = 'block';
+        if(deadlinesContainer) deadlinesContainer.style.display = 'none'; 
+        
+        const queryDisplay = document.getElementById('search-query-display');
+        if(queryDisplay) queryDisplay.innerText = query;
+        
+        let resultsHTML = ''; 
+        const projects = window.allProjectsData || await this.request('get_projects'); 
+        const users = await this.request('get_active_manpower');
         const q = query.toLowerCase();
         
         const matchedProjs = (projects || []).filter(p => p.name.toLowerCase().includes(q) || p.location.toLowerCase().includes(q));
         const matchedUsers = (users || []).filter(u => u.name.toLowerCase().includes(q) || (u.position && u.position.toLowerCase().includes(q)));
         
-        if(matchedProjs.length === 0 && matchedUsers.length === 0) { resultsHTML = `<p style="padding: 10px; color: var(--text-muted);">No results found.</p>`; } 
-        else { 
-            matchedProjs.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('projects'); app.openProjectDetails(${item.id}, '${item.name.replace(/'/g, "\\'")}', '${item.location.replace(/'/g, "\\'")}')"><div class="search-icon-box"><i class="fa-solid fa-city"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.location} | Foreman: ${item.foreman || 'N/A'}</p><span class="search-category-badge">Projects</span></div></div>`; });
-            matchedUsers.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('users')"><div class="search-icon-box" style="color:var(--success);"><i class="fa-solid fa-user-helmet"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.position || 'Worker'} | ${item.skills || 'N/A'}</p><span class="search-category-badge" style="color:var(--success);">Record List</span></div></div>`; });
+        if(matchedProjs.length === 0 && matchedUsers.length === 0) { 
+            resultsHTML = `<p style="padding: 10px; color: var(--text-muted);">No results found.</p>`; 
+        } else { 
+            matchedProjs.forEach(item => { 
+                resultsHTML += `<div class="search-result-item" onclick="app.showModule('projects'); app.openProjectDetails(${item.id}, '${item.name.replace(/'/g, "\\'")}', '${item.location.replace(/'/g, "\\'")}')"><div class="search-icon-box"><i class="fa-solid fa-city"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.location} | Foreman: ${item.foreman || 'N/A'}</p><span class="search-category-badge">Projects</span></div></div>`; 
+            });
+            matchedUsers.forEach(item => { 
+                resultsHTML += `<div class="search-result-item" onclick="app.showModule('users')"><div class="search-icon-box" style="color:var(--success);"><i class="fa-solid fa-user-helmet"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.position || 'Worker'} | ${item.skills || 'N/A'}</p><span class="search-category-badge" style="color:var(--success);">Record List</span></div></div>`; 
+                resultsHTML += `<div class="search-result-item" onclick="app.showModule('payroll'); setTimeout(() => { document.getElementById('pay-name').value = '${item.name.replace(/'/g, "\\'")}'; }, 100);"><div class="search-icon-box" style="color:var(--warning);"><i class="fa-solid fa-file-invoice-dollar"></i></div><div class="search-content"><h4>${item.name}</h4><p>Log Cash Advance / Compute Balance</p><span class="search-category-badge" style="color:var(--warning);">Payroll</span></div></div>`; 
+            });
         }
         content.innerHTML = resultsHTML;
     },
-    clearGlobalSearch: function() { document.getElementById('global-search-input').value = ''; this.handleGlobalSearch(''); },
+    clearGlobalSearch: function() { document.getElementById('global-search-input').value = ''; this.handleGlobalSearch(''); const deadlinesContainer = document.getElementById('upcoming-deadlines-container'); if(deadlinesContainer) deadlinesContainer.style.display = 'block'; },
 
     populateForemanDropdown: async function() {
         const users = await this.request('get_active_manpower');
@@ -161,7 +201,6 @@ const app = {
             this.currentFilePreview = null; display.innerText = "Attach Initial NTP Document (Optional)"; label.style.borderColor = "#D1D5DB"; label.style.color = "var(--text-muted)"; 
         }
     },
-
     viewAttachedFile: function(url) { if(url) { document.getElementById('resume-img').src = url; document.getElementById('resume-modal').style.display = 'block'; } },
 
     submitProjectForm: async function() {
@@ -197,6 +236,7 @@ const app = {
         filtered.forEach(p => {
             let statusUI = ''; let actionBtn = '';
             let viewNtpBtn = p.status === 'pending' ? `<button class="btn-outline" style="height: 26px; padding: 0 8px; font-size: 0.75rem;" onclick="app.showModule('global_ntp')" title="View NTP"><i class="fa-solid fa-file-pdf"></i> Verify NTP</button>` : '';
+
             if (p.status === 'pending') { statusUI = `<span class="badge pending">Pending (NTP)</span>`; actionBtn = ``;
             } else { 
                 statusUI = `<select onchange="app.updateProjectStatus(${p.id}, this.value)" class="table-status-select" style="height:24px; padding: 0 4px; width:auto; font-size:0.75rem; background: ${p.status === 'completed' ? '#D1FAE5' : '#FEFCE8'}; color: ${p.status === 'completed' ? 'var(--success)' : '#854D0E'};"><option value="ongoing" ${p.status === 'ongoing' ? 'selected' : ''}>Ongoing</option><option value="completed" ${p.status === 'completed' ? 'selected' : ''}>Completed</option></select>`; 
@@ -229,13 +269,9 @@ const app = {
         document.getElementById('ptab-progress').classList.remove('active'); document.getElementById('ptab-materials').classList.remove('active'); document.getElementById('ptab-manpower').classList.remove('active');
         
         document.getElementById('tab-' + tabId).classList.add('active'); document.getElementById('ptab-' + tabId).classList.add('active');
-        
-        if(tabId === 'materials') this.renderProjectWorkspaceMaterials();
-        if(tabId === 'progress') this.renderProjectChecklist();
-        if(tabId === 'manpower') this.renderManpowerAssignments();
+        if(tabId === 'materials') this.renderProjectWorkspaceMaterials(); if(tabId === 'progress') this.renderProjectChecklist(); if(tabId === 'manpower') this.renderManpowerAssignments();
     },
 
-    // --- CHECKLIST CRUD ---
     renderProjectChecklist: async function() {
         const data = await this.request('get_project_data', { project_id: this.currentProjectId });
         const grid = document.getElementById('checklist-grid'); grid.innerHTML = '';
@@ -255,23 +291,10 @@ const app = {
             grouped[cat].items.forEach((item, iIdx) => {
                 totalItems++; let isComp = item.status === 'Completed'; if(isComp) completedItems++;
                 const completedClass = isComp ? 'completed' : ''; const checkedAttr = isComp ? 'checked' : '';
-                
-                itemsHtml += `
-                    <div class="checklist-item ${completedClass}" id="item-row-${item.id}">
-                        <div class="checklist-item-left" onclick="app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})">
-                            <input type="checkbox" ${checkedAttr} onclick="event.stopPropagation(); app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})">
-                            <label>${item.task_name} <small style="color:var(--success); font-weight:700;" onclick="event.stopPropagation(); app.editChecklistCostDB(${item.id}, ${item.award_cost})">(₱${parseFloat(item.award_cost).toLocaleString('en-US')})</small></label>
-                        </div>
-                        <div class="checklist-item-actions">
-                            <button class="checklist-action-btn edit" onclick="app.editChecklistItemDB(${item.id}, '${item.task_name.replace(/'/g, "\\'")}')"><i class="fa-solid fa-pencil"></i></button>
-                            <button class="checklist-action-btn delete" onclick="app.deleteChecklistItemDB(${item.id})"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    </div>
-                `;
+                itemsHtml += `<div class="checklist-item ${completedClass}" id="item-row-${item.id}"><div class="checklist-item-left" onclick="app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})"><input type="checkbox" ${checkedAttr} onclick="event.stopPropagation(); app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})"><label>${item.task_name} <small style="color:var(--success); font-weight:700;" onclick="event.stopPropagation(); app.editChecklistCostDB(${item.id}, ${item.award_cost})">(₱${parseFloat(item.award_cost).toLocaleString('en-US')})</small></label></div><div class="checklist-item-actions"><button class="checklist-action-btn edit" onclick="app.editChecklistItemDB(${item.id}, '${item.task_name.replace(/'/g, "\\'")}')"><i class="fa-solid fa-pencil"></i></button><button class="checklist-action-btn delete" onclick="app.deleteChecklistItemDB(${item.id})"><i class="fa-solid fa-trash"></i></button></div></div>`;
             });
 
             let badgeHtml = grouped[cat].assigned ? `<span class="badge-assigned"><i class="fa-solid fa-user-check"></i> ${grouped[cat].assigned}</span>` : '';
-
             grid.innerHTML += `<div class="checklist-category"><h4>${cat} ${badgeHtml} <button class="checklist-action-btn delete" style="float:right;" onclick="app.deleteCategoryDB('${cat}')"><i class="fa-solid fa-xmark"></i></button></h4><div id="cat-items-${cIdx}">${itemsHtml}</div><div id="add-task-container-${cIdx}" style="display:none; margin-top:8px;"><input type="text" class="inline-input" id="add-task-input-${cIdx}" placeholder="Type task and press Enter..." onkeydown="if(event.key==='Enter') app.saveNewTaskDB('${cat}', this.value, ${cIdx})" onblur="this.parentElement.style.display='none'; document.getElementById('btn-show-add-${cIdx}').style.display='block';"></div><button id="btn-show-add-${cIdx}" class="add-task-btn" onclick="this.style.display='none'; document.getElementById('add-task-container-${cIdx}').style.display='block'; document.getElementById('add-task-input-${cIdx}').focus();"><i class="fa-solid fa-plus"></i> Add Task</button></div>`;
         });
         
@@ -297,7 +320,6 @@ const app = {
     saveNewCategoryDB: async function(val) { const input = document.getElementById('input-add-cat'); input.style.display = 'none'; input.value = ''; document.getElementById('btn-add-cat').style.display = 'inline-flex'; if(val.trim() !== '') { await this.request('add_checklist_task', { project_id: this.currentProjectId, category: val.trim(), task_name: '' }); this.showToast('New Phase/Category added.'); this.renderProjectChecklist(); } },
     deleteCategoryDB: async function(category) { if(confirm(`Delete category "${category}" and all its tasks?`)) { await this.request('delete_checklist_category', { project_id: this.currentProjectId, category: category }); this.renderProjectChecklist(); } },
 
-    // --- MANPOWER ASSIGNMENT ---
     renderManpowerAssignments: async function() {
         const users = await this.request('get_active_manpower'); const data = await this.request('get_project_data', { project_id: this.currentProjectId });
         const workerSelect = document.getElementById('assign-worker'); workerSelect.innerHTML = '<option value="">Select Worker</option>';
@@ -320,7 +342,6 @@ const app = {
     assignWorkerToCategory: async function() { const cat = document.getElementById('assign-category').value; const worker = document.getElementById('assign-worker').value; if(!cat || !worker) { this.showToast('Select both Category and Worker.', 'error'); return; } await this.request('assign_worker', { project_id: this.currentProjectId, category: cat, worker: worker }); this.renderManpowerAssignments(); this.showToast(`${worker} assigned to ${cat}. Sync to Payroll Enabled.`); },
     removeWorkerAssignment: async function(cat) { await this.request('remove_worker', { project_id: this.currentProjectId, category: cat }); this.renderManpowerAssignments(); },
 
-    // --- MATERIAL ISSUANCES ---
     renderProjectWorkspaceMaterials: async function() {
         const inventory = await this.request('get_inventory'); const projData = await this.request('get_project_data', { project_id: this.currentProjectId });
         const select = document.getElementById('issue-item'); select.innerHTML = '<option value="">Select Inventory Item</option>';
@@ -340,7 +361,6 @@ const app = {
         document.getElementById('issue-item').value = ''; document.getElementById('issue-qty').value = ''; this.renderProjectWorkspaceMaterials(); this.showToast(`Material successfully issued to site.`);
     },
 
-    // --- MATERIAL SUPPLIERS & INVENTORY ---
     switchMatTab: function(tabId) { document.getElementById('tab-mat-suppliers').classList.remove('active'); document.getElementById('tab-mat-inventory').classList.remove('active'); document.getElementById('tab-mat-' + tabId).classList.add('active'); document.getElementById('mtab-suppliers').classList.remove('active'); document.getElementById('mtab-inventory').classList.remove('active'); document.getElementById('mtab-' + tabId).classList.add('active'); },
     loadSuppliersDashboard: async function() { this.renderSuppliersTable(); this.renderInventoryTable(); },
     renderSuppliersTable: async function() {
@@ -372,7 +392,6 @@ const app = {
         document.getElementById('stock-name').value = ''; document.getElementById('stock-category').value = ''; document.getElementById('stock-category-new').value = ''; document.getElementById('stock-category-new').style.display = 'none'; document.getElementById('stock-qty').value = ''; document.getElementById('stock-unit').value = ''; document.getElementById('stock-cost').value = ''; document.getElementById('stock-supplier').value = ''; this.closeModal('modal-add-stock'); this.renderInventoryTable(); this.showToast(`Inventory item added successfully.`);
     },
 
-    // --- MANPOWER (RECORD LIST) ---
     loadProjectOptionsForManpower: async function() { const proj = await this.request('get_projects'); const select = document.getElementById('man-project'); if (!select) return; select.innerHTML = '<option value="">Select Project</option>'; if(proj) { const activeProjects = proj.filter(p => p.status === 'ongoing' || p.status === 'pending'); activeProjects.forEach(p => select.innerHTML += `<option value="${p.id}">${p.name} - ${p.location}</option>`); } },
     addManpower: async function() {
         const name = document.getElementById('man-name').value; const skills = document.getElementById('man-skills').value; const position = document.getElementById('man-pos').value; const salary = document.getElementById('man-salary').value; const project_id = document.getElementById('man-project').value; const photoInput = document.getElementById('man-photo');
@@ -408,11 +427,23 @@ const app = {
     deleteAwardCost: async function(id) { if(confirm("Delete this Job Description?")) { await this.request('delete_award_cost', { id }); this.loadAwardCosts(); } },
 
     // ==========================================
-    // MODULE: PAYROLL (SMART LEDGER SYNC)
+    // MODULE: PAYROLL 
     // ==========================================
-    populatePayrollDatalist: async function() {
-        const users = await this.request('get_active_manpower'); const datalist = document.getElementById('worker-names-list'); if(!datalist) return;
-        datalist.innerHTML = ''; if(users && Array.isArray(users)) { users.forEach(u => { datalist.innerHTML += `<option value="${u.name}">`; }); }
+    formatCurrencyInput: function(input) {
+        let val = input.value.replace(/[^0-9.]/g, ''); 
+        let parts = val.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        input.value = parts.join('.');
+    },
+
+    populatePayrollDatalists: async function() {
+        const users = await this.request('get_active_manpower'); 
+        const workerList = document.getElementById('worker-names-list'); 
+        if(workerList) { workerList.innerHTML = ''; if(users && Array.isArray(users)) { users.forEach(u => { workerList.innerHTML += `<option value="${u.name}">`; }); } }
+        
+        const jobs = await this.request('get_award_costs'); 
+        const jobList = document.getElementById('pay-job-list'); 
+        if(jobList) { jobList.innerHTML = ''; if(jobs && Array.isArray(jobs)) { jobs.forEach(j => { jobList.innerHTML += `<option value="${j.scope_of_work}">`; }); } }
     },
 
     clearPayrollForm: function() {
@@ -425,37 +456,47 @@ const app = {
         const date = document.getElementById('pay-date').value; 
         const name = document.getElementById('pay-name').value;
         const job = document.getElementById('pay-job').value; 
-        const award = parseFloat(document.getElementById('pay-award').value || 0);
-        const advance = parseFloat(document.getElementById('pay-advance').value || 0);
+        let rawAward = document.getElementById('pay-award').value.replace(/,/g, '');
+        let rawAdvance = document.getElementById('pay-advance').value.replace(/,/g, '');
+        const award = parseFloat(rawAward || 0); const advance = parseFloat(rawAdvance || 0);
         
         if (!name || !job) { this.showToast('Name and Job Description required.', 'error'); return; }
 
-        const res = await this.request('add_payroll', { 
-            date: date || new Date().toISOString().split('T')[0], 
-            name: name, 
-            job_desc: job, 
-            award: award, 
-            advance: advance 
-        });
-        
-        if (res && res.status === 'success') {
-            this.clearPayrollForm(); this.renderPayrollTab(); this.showToast('Transaction logged!');
-        } else {
-            this.showToast(res ? res.message : 'Unknown database error.', 'error');
+        const res = await this.request('add_payroll', { date: date || new Date().toISOString().split('T')[0], name: name, job_desc: job, award: award, advance: advance });
+        if (res && res.status === 'success') { this.clearPayrollForm(); this.renderPayrollTab(); this.showToast('Transaction logged!'); } else { this.showToast(res ? res.message : 'Unknown database error.', 'error'); }
+    },
+
+    openEditPayrollModal: function(id, award, advance) {
+        document.getElementById('edit-pay-id').value = id;
+        document.getElementById('edit-pay-award').value = award ? parseFloat(award).toLocaleString('en-US', {minimumFractionDigits: 2}) : '';
+        document.getElementById('edit-pay-advance').value = advance ? parseFloat(advance).toLocaleString('en-US', {minimumFractionDigits: 2}) : '';
+        this.openModal('modal-edit-payroll');
+    },
+
+    saveEditedPayroll: async function() {
+        const id = document.getElementById('edit-pay-id').value;
+        const rawAward = document.getElementById('edit-pay-award').value.replace(/,/g, '');
+        const rawAdvance = document.getElementById('edit-pay-advance').value.replace(/,/g, '');
+        const award = parseFloat(rawAward || 0); const advance = parseFloat(rawAdvance || 0);
+
+        if(!isNaN(award) && !isNaN(advance)) {
+            await this.request('edit_payroll_entry', { id: id, award_cost: award, cash_advance: advance });
+            this.closeModal('modal-edit-payroll'); this.renderPayrollTab(); this.showToast('Record updated. Balances recalculated.');
+        } else { this.showToast('Invalid numbers entered.', 'error'); }
+    },
+
+    deletePayrollEntry: async function(id) {
+        if(confirm("Are you sure you want to delete this payroll record? It will automatically recalculate the balances.")) {
+            await this.request('delete_payroll_entry', { id: id }); this.renderPayrollTab(); this.showToast('Record deleted. Balances updated.');
         }
     },
 
     togglePayrollRow: function(workerNameSafe, btn) {
         const row = document.getElementById(`nested-${workerNameSafe}`);
         const isExpanding = !row.classList.contains('active');
-
         document.querySelectorAll('.nested-row').forEach(r => r.classList.remove('active'));
         document.querySelectorAll('.btn-toggle-details').forEach(b => b.innerHTML = '<i class="fa-solid fa-eye"></i> View Details');
-
-        if(isExpanding) {
-            row.classList.add('active');
-            if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details';
-        }
+        if(isExpanding) { row.classList.add('active'); if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details'; }
     },
 
     renderPayrollTab: async function() {
@@ -464,62 +505,34 @@ const app = {
         
         const completedTasks = await this.request('get_all_completed_tasks');
         const manualPayrolls = await this.request('get_payroll');
-        
         let aggregatedData = {};
 
-        // Auto-Sync: From Checklist
         if(completedTasks && Array.isArray(completedTasks)) {
             completedTasks.forEach(task => {
                 const worker = task.assigned_worker;
                 if(!aggregatedData[worker]) aggregatedData[worker] = { job: task.category, txns: [] };
-                
-                aggregatedData[worker].txns.push({
-                    project: task.project_name, 
-                    blkLot: task.project_location || '-', 
-                    award: parseFloat(task.award_cost) || 0, 
-                    date: task.completion_date || 'N/A', 
-                    sale: 0
-                });
+                aggregatedData[worker].txns.push({ id: task.id, source: 'auto', project: task.project_name, blkLot: task.project_location || '-', award: parseFloat(task.award_cost) || 0, date: task.completion_date || 'N/A', sale: 0 });
             });
         }
 
-        // Manual Entries: From Form
         if(manualPayrolls && Array.isArray(manualPayrolls)) {
             manualPayrolls.forEach(entry => {
                 if(!aggregatedData[entry.name]) aggregatedData[entry.name] = { job: entry.job_description, txns: [] };
-                
-                aggregatedData[entry.name].job = entry.job_description; // Update to latest job name
-                aggregatedData[entry.name].txns.push({
-                    project: "Cash Advance Log", 
-                    blkLot: entry.job_description, 
-                    award: parseFloat(entry.award_cost) || 0, 
-                    date: entry.pay_date, 
-                    sale: parseFloat(entry.cash_advance) || 0
-                });
+                aggregatedData[entry.name].job = entry.job_description; 
+                aggregatedData[entry.name].txns.push({ id: entry.id, source: 'manual', project: "Cash Advance Log", blkLot: entry.job_description, award: parseFloat(entry.award_cost) || 0, date: entry.pay_date, sale: parseFloat(entry.cash_advance) || 0 });
             });
         }
 
-        // Calculate Running Ledgers & Totals for UI
         Object.keys(aggregatedData).forEach(workerName => {
             let data = aggregatedData[workerName];
+            data.txns.sort((a, b) => new Date(a.date) - new Date(b.date)); 
             
-            // Sort by Date roughly to ensure chronological cascade
-            data.txns.sort((a, b) => new Date(a.date) - new Date(b.date));
-            
-            let runningAward = 0;
-            let runningAdvance = 0;
-            
+            let runningAward = 0; let runningAdvance = 0;
             data.txns.forEach(txn => {
-                runningAward += txn.award;
-                runningAdvance += txn.sale;
-                
-                txn.overall = runningAdvance;
-                txn.balance = runningAward - runningAdvance;
+                runningAward += txn.award; runningAdvance += txn.sale;
+                txn.overall = runningAdvance; txn.balance = runningAward - runningAdvance;
             });
-            
-            data.totalAward = runningAward;
-            data.totalSale = runningAdvance;
-            data.latestBalance = runningAward - runningAdvance;
+            data.totalAward = runningAward; data.totalSale = runningAdvance; data.latestBalance = runningAward - runningAdvance;
         });
 
         tbody.innerHTML = ''; let grandTotal = 0; let workerCount = 0;
@@ -530,92 +543,160 @@ const app = {
         }
 
         Object.keys(aggregatedData).forEach(workerName => {
-            workerCount++; 
-            const data = aggregatedData[workerName]; 
-            grandTotal += data.latestBalance; 
-            
+            workerCount++; const data = aggregatedData[workerName]; grandTotal += data.latestBalance; 
             let safeId = workerName.replace(/[^a-zA-Z0-9]/g, '-'); 
 
-            // MAIN ROW
-            tbody.innerHTML += `
-                <tr>
-                    <td><b style="color:var(--text-dark);">${workerName}</b></td>
-                    <td><span class="badge ongoing">${data.job}</span></td>
-                    <td style="font-weight: 800; color:var(--text-dark);">₱${data.totalAward.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                    <td style="text-align: center;"><button class="btn-outline btn-toggle-details" id="btn-toggle-${safeId}" style="height: 26px; padding: 0 8px; font-size: 0.75rem;" onclick="app.togglePayrollRow('${safeId}', this)"><i class="fa-solid fa-eye"></i> View Details</button></td>
-                </tr>
-            `;
+            tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${workerName}</b></td><td><span class="badge ongoing">${data.job}</span></td><td style="font-weight: 800; color:var(--text-dark);">₱${data.totalAward.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td style="text-align: center;"><button class="btn-outline btn-toggle-details" id="btn-toggle-${safeId}" style="height: 26px; padding: 0 8px; font-size: 0.75rem;" onclick="app.togglePayrollRow('${safeId}', this)"><i class="fa-solid fa-eye"></i> View Details</button></td></tr>`;
 
-            // NESTED ROWS
             let nestedRows = '';
             data.txns.forEach(b => {
-                // Formatting to put '-' if zero to look exactly like your screenshot
                 let awardText = b.award > 0 ? `₱${b.award.toLocaleString('en-US', {minimumFractionDigits:2})}` : `<span style="color:#D1D5DB;">-</span>`;
                 let saleText = b.sale > 0 ? `-₱${b.sale.toLocaleString('en-US', {minimumFractionDigits:2})}` : `<span style="color:var(--danger);">-₱0.00</span>`;
+                let actionHtml = b.source === 'manual' ? `<button class="btn-outline" style="padding: 2px 6px; font-size: 0.7rem; margin-right: 2px;" onclick="app.openEditPayrollModal(${b.id}, ${b.award}, ${b.sale})"><i class="fa-solid fa-pencil"></i></button><button class="btn-danger" style="padding: 2px 6px; font-size: 0.7rem;" onclick="app.deletePayrollEntry(${b.id})"><i class="fa-solid fa-trash"></i></button>` : `<small style="color:var(--text-muted); font-size: 0.7rem;">Auto-Sync</small>`;
 
-                nestedRows += `
-                    <tr>
-                        <td><b>${b.project}</b></td>
-                        <td>${b.blkLot}</td>
-                        <td style="font-weight:600; color:var(--text-dark);">${awardText}</td>
-                        <td style="color:var(--text-muted);">${b.date}</td>
-                        <td style="color:var(--danger);">${saleText}</td>
-                        <td>₱${b.overall.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                        <td style="font-weight:800; color:var(--success);">₱${b.balance.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                    </tr>
-                `;
+                nestedRows += `<tr><td><b>${b.project}</b></td><td>${b.blkLot}</td><td style="font-weight:600; color:var(--text-dark);">${awardText}</td><td style="color:var(--text-muted);">${b.date}</td><td style="color:var(--danger);">${saleText}</td><td>₱${b.overall.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="font-weight:800; color:var(--success);">₱${b.balance.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td>${actionHtml}</td></tr>`;
             });
 
-            // SUMMARY NESTED ROW
-            nestedRows += `
-                <tr style="background-color: #FEFCE8; border-top: 2px solid var(--primary);">
-                    <td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-dark);">SUMMARY TOTAL:</td>
-                    <td style="font-weight: 800; color: var(--text-dark);">₱${data.totalAward.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                    <td></td>
-                    <td style="font-weight: 800; color: var(--danger);">-₱${data.totalSale.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                    <td></td>
-                    <td style="font-weight: 900; color: var(--success); font-size: 0.9rem;">₱${data.latestBalance.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                </tr>
-            `;
+            nestedRows += `<tr style="background-color: #FEFCE8; border-top: 2px solid var(--primary);"><td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-dark);">SUMMARY TOTAL:</td><td style="font-weight: 800; color: var(--text-dark);">₱${data.totalAward.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td></td><td style="font-weight: 800; color: var(--danger);">-₱${data.totalSale.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td></td><td style="font-weight: 900; color: var(--success); font-size: 0.9rem;">₱${data.latestBalance.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td></td></tr>`;
 
-            tbody.innerHTML += `
-                <tr class="nested-row" id="nested-${safeId}">
-                    <td colspan="4" style="padding: 0;">
-                        <div class="nested-table-container">
-                            <h4 style="margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Award Cost Breakdown for ${workerName}</h4>
-                            <table class="nested-table nested-header-red">
-                                <thead>
-                                    <tr>
-                                        <th>PROJECT</th>
-                                        <th>BLK & LOT</th>
-                                        <th>AWARD COST (₱)</th>
-                                        <th>DATE</th>
-                                        <th>SALE / CASH ADV. (₱)</th>
-                                        <th>OVERALL (₱)</th>
-                                        <th>BALANCE (₱)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>${nestedRows}</tbody>
-                            </table>
-                        </div>
-                    </td>
-                </tr>
-            `;
+            tbody.innerHTML += `<tr class="nested-row" id="nested-${safeId}"><td colspan="4" style="padding: 0;"><div class="nested-table-container"><h4 style="margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Award Cost Breakdown for ${workerName}</h4><table class="nested-table nested-header-red"><thead><tr><th>PROJECT</th><th>BLK & LOT</th><th>AWARD COST (₱)</th><th>DATE</th><th>SALE / CASH ADV. (₱)</th><th>OVERALL (₱)</th><th>BALANCE (₱)</th><th style="width: 70px;">ACTION</th></tr></thead><tbody>${nestedRows}</tbody></table></div></td></tr>`;
         });
 
-        // The Grand Total at the bottom shows the sum of all remaining balances
-        document.getElementById('payroll-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('payroll-count').innerText = `${workerCount} Worker(s)`;
+        document.getElementById('payroll-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('payroll-count').innerText = `${workerCount} Worker(s)`;
     },
 
-    resetDatabasePayroll: async function() { if(confirm("Move all current records to History and start a new Payroll Cycle?")) { await this.request('archive_and_reset_payroll'); this.renderPayrollTab(); this.showToast("Cycle Closed. Records moved to History."); } },
-    
-    viewPayrollHistory: async function() {
-        document.getElementById('payroll-active-view').style.display = 'none'; document.getElementById('payroll-history-view').style.display = 'block';
-        const history = await this.request('get_payroll_history'); const tbody = document.querySelector('#table-payroll-history tbody');
-        if(tbody) { tbody.innerHTML = ''; if(history.length === 0) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No history found.</td></tr>`; return; } history.forEach(h => { tbody.innerHTML += `<tr><td><small style="color:var(--text-muted); font-weight:700;">${h.cycle_id}</small></td><td>${h.pay_date}</td><td><b style="color:var(--text-dark);">${h.name}</b></td><td>${h.job_description || 'N/A'}</td><td style="font-weight:800; color:var(--text-dark);">₱${h.net_pay}</td></tr>`; }); }
+    resetDatabasePayroll: async function() { 
+        if(confirm("This will close the cycle and archive ONLY the workers who have fully consumed their Award Cost (Balance = 0). Continue?")) { 
+            const res = await this.request('archive_and_reset_payroll'); 
+            this.renderPayrollTab(); 
+            if(res && res.archived > 0) { this.showToast(`Cycle Closed. ${res.archived} completed records moved to History.`); } 
+            else { this.showToast("No fully completed records (Balance = 0) to archive.", "warning"); }
+        } 
     },
+    
+    toggleHistRow: function(idSafe, btn) {
+        const row = document.getElementById(`nested-${idSafe}`);
+        const isExpanding = !row.classList.contains('active');
+        document.querySelectorAll('.nested-hist-row').forEach(r => r.classList.remove('active'));
+        document.querySelectorAll('.btn-toggle-hist').forEach(b => b.innerHTML = '<i class="fa-solid fa-eye"></i> View Details');
+        if(isExpanding) { row.classList.add('active'); if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details'; }
+    },
+
+    viewPayrollHistory: async function() {
+        document.getElementById('payroll-active-view').style.display = 'none'; 
+        document.getElementById('payroll-history-view').style.display = 'block';
+        
+        const tbody = document.getElementById('payroll-history-content');
+        if(tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving archive...</td></tr>`;
+
+        const history = await this.request('get_payroll_history'); 
+        
+        if(history.length === 0) { 
+            tbody.innerHTML = `<tr><td colspan="4" class="empty-state-wrapper"><i class="fa-solid fa-folder-open"></i><p>No history found.</p></td></tr>`; 
+            return; 
+        }
+
+        let groupedHistory = {};
+        history.forEach(h => {
+            let workerName = h.name; 
+            
+            if(!groupedHistory[workerName]) { groupedHistory[workerName] = { records: [], totalPayout: 0, cycles: new Set() }; }
+            groupedHistory[workerName].records.push(h);
+            groupedHistory[workerName].totalPayout += parseFloat(h.balance || h.net_pay || 0); 
+            groupedHistory[workerName].cycles.add(h.cycle_id);
+        });
+
+        tbody.innerHTML = '';
+        Object.keys(groupedHistory).forEach((workerName, idx) => {
+            let data = groupedHistory[workerName]; let safeId = 'hist-' + idx;
+            
+            tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);"><i class="fa-solid fa-folder" style="color:var(--primary); margin-right:8px;"></i> ${workerName}</b></td><td><span class="badge ongoing">${data.cycles.size} Cycle(s)</span></td><td style="font-weight: 800; color:var(--text-dark);">₱${data.totalPayout.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td style="text-align: center;"><button class="btn-outline btn-toggle-hist" id="btn-toggle-${safeId}" style="height: 26px; padding: 0 8px; font-size: 0.75rem;" onclick="app.toggleHistRow('${safeId}', this)"><i class="fa-solid fa-eye"></i> View Details</button></td></tr>`;
+
+            let nestedRows = '';
+            data.records.forEach(r => {
+                nestedRows += `<tr><td><small style="color:var(--text-muted); font-weight:700;">${r.cycle_id}</small></td><td>${r.pay_date}</td><td>${r.job_description || '-'}</td><td style="font-weight:600; color:var(--text-dark);">₱${parseFloat(r.award_cost || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="color:var(--danger);">-₱${parseFloat(r.cash_advance || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="font-weight:800; color:var(--success);">₱${parseFloat(r.balance || r.net_pay || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td></tr>`;
+            });
+
+            tbody.innerHTML += `<tr class="nested-row nested-hist-row" id="nested-${safeId}"><td colspan="4" style="padding: 0;"><div class="nested-table-container"><h4 style="margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Archive Breakdown for ${workerName}</h4><table class="nested-table nested-header-red"><thead><tr><th>CYCLE ID</th><th>DATE PAID</th><th>JOB DESCRIPTION</th><th>AWARD COST (₱)</th><th>ADVANCE (₱)</th><th>BALANCE / PAYOUT (₱)</th></tr></thead><tbody>${nestedRows}</tbody></table></div></td></tr>`;
+        });
+    },
+
     backToActivePayroll: function() { if(document.getElementById('payroll-history-view')) document.getElementById('payroll-history-view').style.display = 'none'; if(document.getElementById('payroll-active-view')) document.getElementById('payroll-active-view').style.display = 'block'; },
+
+    // --- CASH RELEASE MODULE ---
+    loadCashRelease: async function() {
+        const tbody = document.getElementById('cash-release-content'); if(!tbody) return;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving ledger...</td></tr>`;
+        
+        const data = await this.request('get_cash_releases');
+        
+        let totalMat = 0; let totalLab = 0; let totalOth = 0; let grandTotal = 0;
+        
+        tbody.innerHTML = '';
+        if(!data || data.length === 0) { 
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-state-wrapper"><p>No cash releases recorded yet.</p></td></tr>`; 
+        } else {
+            data.forEach(r => {
+                let amt = parseFloat(r.amount) || 0; 
+                grandTotal += amt;
+                
+                let badgeClass = '';
+                if(r.category === 'Material') { totalMat += amt; badgeClass = 'ongoing'; }
+                else if(r.category === 'Labor') { totalLab += amt; badgeClass = 'success'; }
+                else { totalOth += amt; badgeClass = 'pending'; } 
+                
+                let catBadge = `<span class="badge ${badgeClass}">${r.category}</span>`;
+
+                tbody.innerHTML += `<tr>
+                    <td style="color:var(--text-muted);">${r.release_date}</td>
+                    <td>${catBadge}</td>
+                    <td><b style="color:var(--text-dark);">${r.name}</b></td>
+                    <td>${r.description || '-'}</td>
+                    <td style="font-weight:800; color:var(--danger);">-₱${amt.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td><button class="btn-danger" style="height:26px; padding:0 8px; border-radius:4px;" onclick="app.deleteCashRelease(${r.id})"><i class="fa-solid fa-trash"></i></button></td>
+                </tr>`;
+            });
+        }
+
+        document.getElementById('cr-total-materials').innerText = `₱${totalMat.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-total-labor').innerText = `₱${totalLab.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-total-others').innerText = `₱${totalOth.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-grand-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    },
+
+    addCashRelease: async function() {
+        const date = document.getElementById('cr-date').value;
+        const cat = document.getElementById('cr-category').value;
+        const name = document.getElementById('cr-name').value;
+        const desc = document.getElementById('cr-desc').value;
+        let rawAmount = document.getElementById('cr-amount').value.replace(/,/g, '');
+        const amt = parseFloat(rawAmount || 0);
+
+        if(!date || !cat || !name || !amt) {
+            this.showToast("Date, Category, Name, and Amount are required!", "error"); return;
+        }
+
+        const res = await this.request('add_cash_release', { date: date, category: cat, name: name, desc: desc, amount: amt });
+        if(res.status === 'success') {
+            document.getElementById('cr-date').value = '';
+            document.getElementById('cr-category').value = '';
+            document.getElementById('cr-name').value = '';
+            document.getElementById('cr-desc').value = '';
+            document.getElementById('cr-amount').value = '';
+            this.loadCashRelease();
+            this.showToast('Cash Release recorded.');
+        } else {
+            this.showToast(res.message, 'error');
+        }
+    },
+
+    deleteCashRelease: async function(id) {
+        if(confirm("Delete this cash release record?")) {
+            await this.request('delete_cash_release', { id: id });
+            this.loadCashRelease();
+            this.showToast('Record deleted.');
+        }
+    },
 
     // --- NTP GLOBAL ---
     loadGlobalNTP: async function() {
@@ -627,7 +708,6 @@ const app = {
     uploadGlobalNTP: async function() {
         const project_id = document.getElementById('g-ntp-project').value; const ticket = document.getElementById('g-ntp-ticket').value; const date = document.getElementById('g-ntp-date').value; const award_cost = document.getElementById('g-ntp-cost').value; const due_date = document.getElementById('g-ntp-due').value; const accept_date = document.getElementById('g-ntp-accept').value; const fileInput = document.getElementById('g-ntp-file');
         if (!project_id || !date || !due_date || fileInput.files.length === 0) { this.showToast('Project, NTP Date, Due Date, and File are required!', 'error'); return; }
-        
         const fd = new FormData(); fd.append('project_id', project_id); fd.append('ticket', ticket); fd.append('date', date); fd.append('award_cost', award_cost); fd.append('due_date', due_date); fd.append('accept_date', accept_date); fd.append('file', fileInput.files[0]);
         const res = await this.request('upload_ntp_file', fd, true);
         if (res.status === 'success') { document.getElementById('g-ntp-ticket').value = ''; document.getElementById('g-ntp-cost').value = ''; document.getElementById('g-ntp-accept').value = ''; document.getElementById('g-ntp-file').value = ''; this.loadGlobalNTP(); this.showToast("NTP Successfully uploaded!"); } else { this.showToast(res.message, 'error'); }

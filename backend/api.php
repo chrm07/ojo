@@ -49,12 +49,16 @@ switch ($action) {
 
     case 'get_all_completed_tasks': echo json_encode($app->getAllCompletedTasks()); break;
     case 'get_payroll': echo json_encode($app->getPayroll()); break;
-    
-    // UPDATED PAYROLL ACTION
     case 'add_payroll': echo json_encode($app->addPayroll($_POST['date'], $_POST['name'], $_POST['job_desc'], $_POST['award'], $_POST['advance'])); break;
-    
+    case 'edit_payroll_entry': echo json_encode($app->editPayrollEntry($_POST['id'], $_POST['award_cost'], $_POST['cash_advance'])); break;
+    case 'delete_payroll_entry': echo json_encode($app->deletePayrollEntry($_POST['id'])); break;
     case 'archive_and_reset_payroll': echo json_encode($app->archiveAndResetPayroll()); break;
     case 'get_payroll_history': echo json_encode($app->getPayrollHistory()); break;
+
+    // NEW ENDPOINTS FOR CASH RELEASES
+    case 'get_cash_releases': echo json_encode($app->getCashReleases()); break;
+    case 'add_cash_release': echo json_encode($app->addCashRelease($_POST['date'], $_POST['category'], $_POST['name'], $_POST['desc'], $_POST['amount'])); break;
+    case 'delete_cash_release': echo json_encode($app->deleteCashRelease($_POST['id'])); break;
 
     case 'get_all_ntps': echo json_encode($app->getAllNTPs()); break;
     case 'upload_ntp_file': echo json_encode($app->uploadNTPFile($_POST['project_id'], $_POST['ticket'], $_POST['date'], $_POST['award_cost'], $_POST['due_date'], $_POST['accept_date'], $_FILES['file'] ?? null)); break;
