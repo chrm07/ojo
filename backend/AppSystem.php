@@ -8,11 +8,20 @@ class ConstructionSystem {
         $stmt = $this->pdo->prepare("SELECT * FROM admins WHERE email = ?");
         $stmt->execute([$email]);
         $admin = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($admin && password_verify($password, $admin['password'])) {
-            $_SESSION['user_id'] = $admin['id']; $_SESSION['role'] = 'admin';
-            return ['status' => 'success', 'role' => 'admin'];
+        
+        // CHECK KUNG EXIST ANG EMAIL
+        if (!$admin) {
+            return ['status' => 'error', 'message' => 'Email address not found.', 'field' => 'email'];
         }
-        return ['status' => 'error', 'message' => 'Invalid credentials.'];
+        
+        // CHECK KUNG TAMA ANG PASSWORD
+        if (!password_verify($password, $admin['password'])) {
+            return ['status' => 'error', 'message' => 'Incorrect password.', 'field' => 'password'];
+        }
+
+        // KUNG TAMA LAHAT
+        $_SESSION['user_id'] = $admin['id']; $_SESSION['role'] = 'admin';
+        return ['status' => 'success', 'role' => 'admin'];
     }
 
     public function getDashboardStats() {
@@ -77,7 +86,7 @@ class ConstructionSystem {
     
     public function issueMaterial($project_id, $item_id, $qty, $receiver) {
         $stmt = $this->pdo->prepare("SELECT stock, unit_cost FROM inventory WHERE id = ?"); $stmt->execute([$item_id]); $item = $stmt->fetch();
-        if(!$item || $item['stock'] < $qty) return ['status' => 'error', 'message' => 'Insufficient stock!'];
+        if(!$item || $item['stock'] < $qty) return ['status' => 'error', 'message' => 'Insufficient stock! Only ' . ($item['stock'] ?? 0) . ' left.'];
         $this->pdo->beginTransaction();
         try {
             $this->pdo->prepare("UPDATE inventory SET stock = stock - ? WHERE id = ?")->execute([$qty, $item_id]);
@@ -104,12 +113,11 @@ class ConstructionSystem {
         return ['status' => 'success'];
     }
 
-    // --- AWARD COST ---
     public function getAwardCosts() { return $this->pdo->query("SELECT * FROM award_costs ORDER BY scope_of_work ASC")->fetchAll(PDO::FETCH_ASSOC); }
     public function addAwardCost($desc, $amount) { $this->pdo->prepare("INSERT INTO award_costs (scope_of_work, amount) VALUES (?, ?)")->execute([$desc, $amount]); return ['status' => 'success']; }
     public function deleteAwardCost($id) { $this->pdo->prepare("DELETE FROM award_costs WHERE id = ?")->execute([$id]); return ['status' => 'success']; }
 
-    // --- PAYROLL (SMART LEDGER) ---
+    // --- PAYROLL ENHANCED ---
     public function getAllCompletedTasks() { 
         try { return $this->pdo->query("SELECT a.*, p.name as project_name, p.location as project_location FROM project_accomplishments a JOIN projects p ON a.project_id = p.id WHERE a.status = 'Completed' AND a.assigned_worker IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC); } 
         catch (PDOException $e) { return []; } 
@@ -131,19 +139,26 @@ class ConstructionSystem {
                 $manpower_id = $this->pdo->lastInsertId();
             } else { $manpower_id = $worker['id']; }
 
-            $this->pdo->prepare("INSERT INTO payroll (manpower_id, pay_date, job_description, rate, days_worked, gross_pay, deductions, net_pay, award_cost, cash_advance, overall_advance, balance) VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?, ?, 0, 0)")->execute([$manpower_id, $date, $job, $award_cost, $cash_advance]);
+            $this->pdo->prepare("INSERT INTO payroll (manpower_id, pay_date, job_description, rate, days_worked, gross_pay, deductions, net_pay, award_cost, cash_advance, overall_advance, balance) 
+                                 VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?, ?, 0, 0)")
+                      ->execute([$manpower_id, $date, $job, $award_cost, $cash_advance]);
+            
             return ['status' => 'success'];
         } catch (PDOException $e) { return ['status' => 'error', 'message' => 'SQL Error: ' . $e->getMessage()]; }
     }
 
     public function deletePayrollEntry($id) {
-        try { $this->pdo->prepare("DELETE FROM payroll WHERE id = ?")->execute([$id]); return ['status' => 'success']; } 
-        catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; }
+        try {
+            $this->pdo->prepare("DELETE FROM payroll WHERE id = ?")->execute([$id]);
+            return ['status' => 'success'];
+        } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; }
     }
 
     public function editPayrollEntry($id, $award, $advance) {
-        try { $this->pdo->prepare("UPDATE payroll SET award_cost = ?, cash_advance = ? WHERE id = ?")->execute([$award, $advance, $id]); return ['status' => 'success']; } 
-        catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; }
+        try {
+            $this->pdo->prepare("UPDATE payroll SET award_cost = ?, cash_advance = ? WHERE id = ?")->execute([$award, $advance, $id]);
+            return ['status' => 'success'];
+        } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; }
     }
     
     public function archiveAndResetPayroll() {
@@ -177,19 +192,17 @@ class ConstructionSystem {
         return $this->pdo->query("SELECT h.*, m.name FROM payroll_history h JOIN manpower m ON h.manpower_id = m.id ORDER BY h.pay_date DESC, h.id DESC")->fetchAll(PDO::FETCH_ASSOC); 
     }
 
-    // --- CASH RELEASES (NEW MANUAL LOGIC WITH CATEGORIES) ---
+    // --- CASH RELEASES ---
     public function getCashReleases() {
         try { return $this->pdo->query("SELECT * FROM cash_releases ORDER BY release_date DESC, id DESC")->fetchAll(PDO::FETCH_ASSOC); } 
         catch (PDOException $e) { return []; }
     }
-    
     public function addCashRelease($date, $category, $name, $desc, $amount) {
         try {
             $this->pdo->prepare("INSERT INTO cash_releases (release_date, category, name, description, amount) VALUES (?, ?, ?, ?, ?)")->execute([$date, $category, $name, $desc, $amount]);
             return ['status' => 'success'];
         } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; }
     }
-    
     public function deleteCashRelease($id) {
         try { $this->pdo->prepare("DELETE FROM cash_releases WHERE id = ?")->execute([$id]); return ['status' => 'success']; } 
         catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; }

@@ -10,16 +10,24 @@
 <body>
 
     <div id="auth-screen">
-        <div class="card" style="width: 100%; max-width: 400px; text-align:center; padding: 40px; margin: 20px; border-top: 6px solid var(--primary);">
-            <h2 style="color:var(--text-dark); font-weight:900; font-size:1.8rem; margin-bottom:5px;">J.I.OJO</h2>
-            <p style="color:var(--text-muted); margin-bottom:24px; font-weight:700; text-transform:uppercase; letter-spacing:1px; font-size:0.75rem;">Enterprise Management</p>
+        <div class="login-card">
+            <div class="login-header">
+                <h2><i class="fa-solid fa-helmet-safety" style="color: var(--primary);"></i> J.I.OJO</h2>
+                <p>Enterprise Management</p>
+            </div>
             <form id="auth-form">
-                <input type="email" id="auth-email" placeholder="Corporate Email" required style="margin-bottom:12px;">
-                <div style="position: relative; margin-bottom: 16px;">
-                    <input type="password" id="auth-pass" placeholder="Password" required style="width: 100%; margin-bottom: 0;">
-                    <i class="fa-solid fa-eye" id="toggle-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted);" onclick="app.togglePassword()"></i>
+                <div class="login-input-group">
+                    <label>Corporate Email</label>
+                    <i class="fa-solid fa-envelope input-icon"></i>
+                    <input type="email" id="auth-email" class="with-icon" placeholder="admin@jiojo.com" required>
                 </div>
-                <button type="submit" class="btn" id="auth-btn" style="width:100%;"><i class="fa-solid fa-lock"></i> SECURE LOGIN</button>
+                <div class="login-input-group">
+                    <label>Password</label>
+                    <i class="fa-solid fa-lock input-icon"></i>
+                    <input type="password" id="auth-pass" class="with-icon" placeholder="••••••••" required>
+                    <i class="fa-solid fa-eye" id="toggle-password" onclick="app.togglePassword()"></i>
+                </div>
+                <button type="submit" class="btn login-btn" id="auth-btn">SECURE LOGIN <i class="fa-solid fa-arrow-right" style="margin-left: 6px;"></i></button>
             </form>
         </div>
     </div>
@@ -35,9 +43,7 @@
                 <li onclick="app.showModule('users')" data-module="users"><i class="fa-solid fa-address-card"></i> Record List</li>
                 <li onclick="app.showModule('award_costs')" data-module="award_costs"><i class="fa-solid fa-clipboard-list"></i> Award Cost</li>
                 <li onclick="app.showModule('payroll')" data-module="payroll"><i class="fa-solid fa-money-check-dollar"></i> Payroll</li>
-                
                 <li onclick="app.showModule('cash_release')" data-module="cash_release"><i class="fa-solid fa-hand-holding-dollar"></i> Cash Release</li>
-                
                 <li onclick="app.showModule('global_ntp')" data-module="global_ntp"><i class="fa-solid fa-file-signature"></i> Notice to Proceed</li>
                 <li onclick="app.showModule('projects')" data-module="projects"><i class="fa-solid fa-city"></i> Projects (Sites)</li>
                 <li onclick="app.showModule('materials')" data-module="materials"><i class="fa-solid fa-truck-ramp-box"></i> Material Supplier</li>
@@ -245,7 +251,9 @@
                 <div id="payroll-active-view">
                     <div class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
-                            <div><h3 style="color: var(--text-dark); font-weight: 800; font-size: 1.2rem;"><i class="fa-solid fa-file-invoice-dollar" style="color:var(--text-muted); margin-right:8px;"></i> Current Payroll Cycle</h3></div>
+                            <div>
+                                <h3 style="color: var(--text-dark); font-weight: 800; font-size: 1.2rem;"><i class="fa-solid fa-file-invoice-dollar" style="color:var(--text-muted); margin-right:8px;"></i> Current Payroll Cycle</h3>
+                            </div>
                             <div style="display:flex; gap: 10px;">
                                 <button class="btn-outline" onclick="app.viewPayrollHistory()"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
                                 <button class="btn-success-solid btn" onclick="app.resetDatabasePayroll()"><i class="fa-solid fa-check-double"></i> Close Cycle</button>
@@ -256,10 +264,13 @@
                             <input type="date" id="pay-date" title="Pay Period End Date">
                             <input type="text" id="pay-name" list="worker-names-list" placeholder="Search Worker Name">
                             <datalist id="worker-names-list"></datalist>
+                            
                             <input type="text" id="pay-job" list="pay-job-list" placeholder="Job/Unit Description">
                             <datalist id="pay-job-list"></datalist>
+                            
                             <input type="text" id="pay-award" placeholder="Award Cost (₱)" oninput="app.formatCurrencyInput(this)">
                             <input type="text" id="pay-advance" placeholder="Cash Advance (₱)" oninput="app.formatCurrencyInput(this)">
+                            
                             <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
                                 <button class="btn-outline" onclick="app.clearPayrollForm()"><i class="fa-solid fa-eraser"></i> Clear</button>
                                 <button class="btn-yellow-solid btn" onclick="app.addManualPayroll()"><i class="fa-solid fa-plus"></i> Add to Payslip</button>
@@ -268,10 +279,21 @@
 
                         <div class="table-responsive" style="overflow: visible;">
                             <table class="sheet-table" id="table-payroll">
-                                <thead><tr><th>NAME</th><th>JOB DESCRIPTION</th><th>AWARD COST (₱)</th><th style="width: 120px; text-align: center;">ACTION</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th>NAME</th>
+                                        <th>JOB DESCRIPTION</th>
+                                        <th>AWARD COST (₱)</th>
+                                        <th style="width: 120px; text-align: center;">ACTION</th>
+                                    </tr>
+                                </thead>
                                 <tbody id="payroll-content"></tbody>
                                 <tfoot style="background: #F3F4F6;">
-                                    <tr><td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-muted);">TOTAL (₱):</td><td style="font-weight: 800; color: var(--text-dark); font-size: 1.1rem;" id="payroll-total">₱0.00</td><td style="text-align: center; color: var(--text-muted); font-weight: 600;" id="payroll-count">0 Worker(s)</td></tr>
+                                    <tr>
+                                        <td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-muted);">TOTAL (₱):</td>
+                                        <td style="font-weight: 800; color: var(--text-dark); font-size: 1.1rem;" id="payroll-total">₱0.00</td>
+                                        <td style="text-align: center; color: var(--text-muted); font-weight: 600;" id="payroll-count">0 Worker(s)</td>
+                                    </tr>
                                 </tfoot>
                             </table>
                         </div>
@@ -284,7 +306,14 @@
                         <h3 style="margin-bottom: 24px; color: var(--text-dark); font-weight:800; font-size:1.2rem;"><i class="fa-solid fa-box-archive"></i> Payroll History (Last 12 Months)</h3>
                         <div class="table-responsive" style="overflow: visible;">
                             <table class="sheet-table" id="table-payroll-history">
-                                <thead><tr><th>WORKER NAME</th><th>TOTAL CYCLES</th><th>TOTAL HISTORICAL PAYOUT (₱)</th><th style="width: 120px; text-align: center;">ACTION</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th>WORKER NAME</th>
+                                        <th>TOTAL CYCLES</th>
+                                        <th>TOTAL HISTORICAL PAYOUT (₱)</th>
+                                        <th style="width: 120px; text-align: center;">ACTION</th>
+                                    </tr>
+                                </thead>
                                 <tbody id="payroll-history-content"></tbody>
                             </table>
                         </div>
@@ -293,7 +322,6 @@
             </section>
 
             <section id="mod-cash_release" class="module">
-                
                 <div class="quick-stats-grid" style="grid-template-columns: repeat(4, 1fr);">
                     <div class="stat-card"><div class="stat-details"><h3>Total Materials</h3><h2 id="cr-total-materials">₱0.00</h2></div><div class="stat-icon" style="background:#EFF6FF; color:#3B82F6;"><i class="fa-solid fa-boxes-stacked"></i></div></div>
                     <div class="stat-card"><div class="stat-details"><h3>Total Labor</h3><h2 id="cr-total-labor">₱0.00</h2></div><div class="stat-icon" style="background:#FEF3C7; color:#F59E0B;"><i class="fa-solid fa-users"></i></div></div>
