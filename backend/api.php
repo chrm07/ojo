@@ -14,6 +14,18 @@ switch ($action) {
     case 'check_session': echo json_encode(['logged_in' => isset($_SESSION['user_id']), 'role' => $_SESSION['role'] ?? '']); break;
     case 'get_stats': echo json_encode($app->getDashboardStats()); break;
 
+    // GLOBAL SEARCH ALL BUNDLE
+    case 'get_global_search_data':
+        echo json_encode([
+            'projects' => $app->getProjects(),
+            'users' => $app->getUsers(),
+            'suppliers' => $app->getSuppliers(),
+            'inventory' => $app->getInventory(),
+            'award_costs' => $app->getAwardCosts(),
+            'cash_releases' => $app->getCashReleases()
+        ]);
+        break;
+
     case 'add_project': echo json_encode($app->addProject($_POST['name'], $_POST['client'], $_POST['location'], $_POST['desc'], $_POST['foreman'], $_POST['start_date'])); break;
     case 'get_projects': echo json_encode($app->getProjects()); break;
     case 'update_project_status': echo json_encode($app->updateProjectStatus($_POST['id'], $_POST['status'])); break;
@@ -41,7 +53,17 @@ switch ($action) {
     case 'get_active_manpower': echo json_encode($app->getUsers()); break;
     case 'get_manpower_skills': echo json_encode($app->getManpowerSkills()); break;
     case 'get_manpower_by_skill': echo json_encode($app->getManpowerBySkill($_POST['skill'])); break;
-    case 'add_manpower': echo json_encode($app->addManpower($_POST['name'], $_POST['skills'], $_POST['position'], $_POST['salary'], $_POST['project_id'], $_FILES['photo'] ?? null)); break;
+    case 'add_manpower': echo json_encode($app->addManpower($_POST['name'], $_POST['skills'], $_POST['position'], $_POST['salary'], $_POST['project_id'] ?? null, $_FILES['photo'] ?? null)); break;
+    
+    // FOLDER CATEGORY ACTIONS
+    case 'add_skill_category': echo json_encode($app->addSkillCategory($_POST['name'])); break;
+    case 'edit_skill_category': echo json_encode($app->editSkillCategory($_POST['old_name'], $_POST['new_name'])); break;
+    case 'delete_skill_category': echo json_encode($app->deleteSkillCategory($_POST['name'])); break;
+    
+    // ARCHIVE ACTIONS
+    case 'archive_manpower': echo json_encode($app->archiveManpower($_POST['id'])); break;
+    case 'restore_manpower': echo json_encode($app->restoreManpower($_POST['id'])); break;
+    case 'get_archived_manpower': echo json_encode($app->getArchivedManpower()); break;
 
     case 'get_award_costs': echo json_encode($app->getAwardCosts()); break;
     case 'add_award_cost': echo json_encode($app->addAwardCost($_POST['desc'], $_POST['amount'])); break;
@@ -55,7 +77,6 @@ switch ($action) {
     case 'archive_and_reset_payroll': echo json_encode($app->archiveAndResetPayroll()); break;
     case 'get_payroll_history': echo json_encode($app->getPayrollHistory()); break;
 
-    // NEW ENDPOINTS FOR CASH RELEASES
     case 'get_cash_releases': echo json_encode($app->getCashReleases()); break;
     case 'add_cash_release': echo json_encode($app->addCashRelease($_POST['date'], $_POST['category'], $_POST['name'], $_POST['desc'], $_POST['amount'])); break;
     case 'delete_cash_release': echo json_encode($app->deleteCashRelease($_POST['id'])); break;
