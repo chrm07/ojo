@@ -60,7 +60,7 @@
                 </div>
                 <div class="global-search-container">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="global-search-input" placeholder="Search Global Database..." oninput="app.handleGlobalSearch(this.value)">
+                    <input type="text" id="global-search-input" placeholder="Search Projects & Manpower..." oninput="app.handleGlobalSearch(this.value)">
                     <button class="clear-search-btn" id="clear-search-btn" onclick="app.clearGlobalSearch()"><i class="fa-solid fa-circle-xmark"></i></button>
                 </div>
                 <div class="header-right">
@@ -75,14 +75,12 @@
                 <div class="quick-stats-grid">
                     <div class="stat-card" onclick="app.showModule('projects')"><div class="stat-details"><h3>Ongoing Projects</h3><h2 id="stat-projects">0</h2><span class="badge ongoing">Active Sites</span></div><div class="stat-icon"><i class="fa-solid fa-building"></i></div></div>
                     <div class="stat-card" onclick="app.showModule('users')"><div class="stat-details"><h3>Active Manpower</h3><h2 id="stat-users">0</h2><span class="badge success">Deployed</span></div><div class="stat-icon" style="background:var(--success-bg); color:var(--success);"><i class="fa-solid fa-users"></i></div></div>
-                    <div class="stat-card" onclick="app.showModule('cash_release')"><div class="stat-details"><h3>Total Cash Releases</h3><h2 id="stat-cash-release" style="color:var(--danger);">₱0.00</h2><span class="badge pending" style="background:#FEE2E2; color:#EF4444; border:none;">Material, Labor, Others</span></div><div class="stat-icon" style="background:var(--danger-bg); color:var(--danger);"><i class="fa-solid fa-hand-holding-dollar"></i></div></div>
-                    <div class="stat-card" onclick="app.showModule('payroll')"><div class="stat-details"><h3>Total Payroll Advances</h3><h2 id="stat-payroll-advance" style="color:var(--warning);">₱0.00</h2><span class="badge warning" style="background:#FEF3C7; color:#B45309; border:none;">Worker Cash Advances</span></div><div class="stat-icon" style="background:var(--warning-bg); color:var(--warning);"><i class="fa-solid fa-money-bill-transfer"></i></div></div>
                 </div>
                 <div id="upcoming-deadlines-container" class="card">
                     <div class="card-header"><h3><i class="fa-solid fa-calendar-days" style="color: var(--text-dark);"></i> Upcoming Deadlines</h3><p>Automatically sorts tasks prioritizing urgent deadlines within the next 30 days.</p></div>
-                    <div class="table-responsive"><table class="sheet-table"><thead><tr><th style="width: 40px; text-align: center;">Type</th><th>Site / Name</th><th>Action Needed</th><th>Target Date</th><th>Status</th></tr></thead><tbody id="deadlines-content"></tbody></table></div>
+                    <div class="table-responsive"><table class="sheet-table"><thead><tr><th style="width: 40px; text-align: center;">Type</th><th>Site / Name</th><th>Action Needed</th><th>Target Date</th><th>Urgency</th></tr></thead><tbody id="deadlines-content"></tbody></table></div>
                 </div>
-                <div id="global-search-results" class="card" style="display:none;"><div class="card-header" style="border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;"><h3><i class="fa-solid fa-bolt" style="color: var(--primary-hover);"></i> Global Search Results</h3><p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Found results matching "<b id="search-query-display" style="color:var(--text-dark);"></b>"</p></div><div id="search-results-content" style="display: flex; flex-direction: column; gap: 8px;"></div></div>
+                <div id="global-search-results" class="card" style="display:none;"><div class="card-header" style="border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;"><h3><i class="fa-solid fa-bolt" style="color: var(--primary-hover);"></i> Search Results</h3><p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Found results matching "<b id="search-query-display" style="color:var(--text-dark);"></b>"</p></div><div id="search-results-content" style="display: flex; flex-direction: column; gap: 8px;"></div></div>
             </section>
 
             <section id="mod-projects" class="module">
@@ -213,35 +211,12 @@
                         </div>
                         <div class="form-grid">
                             <input type="text" id="man-name" placeholder="Full Name" required>
-                            
-                            <div style="display: flex; flex-direction: column;">
-                                <select id="man-skills" onchange="app.handleSkillChange(this.value)">
-                                    <option value="">Select Skill / Folder</option>
-                                </select>
-                                <input type="text" id="man-skills-new" placeholder="Type new folder name..." style="display: none; margin-top: 4px;">
-                            </div>
-
-                            <div style="display: flex; flex-direction: column;">
-                                <select id="man-pos" onchange="app.handlePosChange(this.value)">
-                                    <option value="">Select Position</option>
-                                    <option value="Foreman">Foreman</option>
-                                    <option value="Lead">Lead</option>
-                                    <option value="Engineer">Engineer</option>
-                                    <option value="Mason">Mason</option>
-                                    <option value="Laborer">Laborer</option>
-                                    <option value="Welder">Welder</option>
-                                    <option value="Helper">Helper</option>
-                                    <option value="ADD_NEW" style="font-weight: 800; color: var(--primary-hover);">+ Add New Position</option>
-                                </select>
-                                <input type="text" id="man-pos-new" placeholder="Type new position..." style="display: none; margin-top: 4px;">
-                            </div>
-
+                            <input type="text" id="man-skills" placeholder="Skills (e.g. Mason)">
+                            <input type="text" id="man-pos" placeholder="Position (e.g. Foreman)">
                             <input type="number" id="man-salary" placeholder="Daily Rate (₱)">
-                            <select id="man-project"><option value="">Select Project (Optional)</option></select>
+                            <select id="man-project"><option value="">Select Project</option></select>
                             <input type="file" id="man-photo" accept="image/*">
-                            
-                            <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; margin-top: 8px;">
-                                <button class="btn-outline" onclick="app.addFolderOnly()" style="margin-right: 10px;"><i class="fa-solid fa-folder-plus"></i> Create Empty Folder</button>
+                            <div style="grid-column: 1/-1; display:flex; justify-content:flex-end;">
                                 <button class="btn" onclick="app.addManpower()"><i class="fa-solid fa-check"></i> Add Record</button>
                             </div>
                         </div>
@@ -254,7 +229,7 @@
                 <div id="manpower-table-view" style="display: none;">
                     <div class="card">
                         <button class="btn-outline" onclick="app.backToSkills()" style="margin-bottom: 24px;"><i class="fa-solid fa-arrow-left"></i> Back to Categories</button>
-                        <h3 id="current-skill-title" style="margin-bottom: 24px; color: var(--text-dark); font-weight:800; font-size:1.4rem; display:flex; align-items:center; justify-content:space-between;">Skill Group</h3>
+                        <h3 id="current-skill-title" style="margin-bottom: 24px; color: var(--text-dark); font-weight:800; font-size:1.4rem;">Skill Group</h3>
                         <div class="table-responsive"><table class="sheet-table" id="table-users"><thead><tr><th>Name</th><th>Project Assigned</th><th>Skills</th><th>Position</th><th>Rate</th><th>Bio Data</th><th>Action</th></tr></thead><tbody></tbody></table></div>
                     </div>
                 </div>
@@ -276,9 +251,7 @@
                 <div id="payroll-active-view">
                     <div class="card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
-                            <div>
-                                <h3 style="color: var(--text-dark); font-weight: 800; font-size: 1.2rem;"><i class="fa-solid fa-file-invoice-dollar" style="color:var(--text-muted); margin-right:8px;"></i> Current Payroll Cycle</h3>
-                            </div>
+                            <div><h3 style="color: var(--text-dark); font-weight: 800; font-size: 1.2rem;"><i class="fa-solid fa-file-invoice-dollar" style="color:var(--text-muted); margin-right:8px;"></i> Current Payroll Cycle</h3></div>
                             <div style="display:flex; gap: 10px;">
                                 <button class="btn-outline" onclick="app.viewPayrollHistory()"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
                                 <button class="btn-success-solid btn" onclick="app.resetDatabasePayroll()"><i class="fa-solid fa-check-double"></i> Close Cycle</button>
@@ -289,13 +262,10 @@
                             <input type="date" id="pay-date" title="Pay Period End Date">
                             <input type="text" id="pay-name" list="worker-names-list" placeholder="Search Worker Name">
                             <datalist id="worker-names-list"></datalist>
-                            
                             <input type="text" id="pay-job" list="pay-job-list" placeholder="Job/Unit Description">
                             <datalist id="pay-job-list"></datalist>
-                            
                             <input type="text" id="pay-award" placeholder="Award Cost (₱)" oninput="app.formatCurrencyInput(this)">
                             <input type="text" id="pay-advance" placeholder="Cash Advance (₱)" oninput="app.formatCurrencyInput(this)">
-                            
                             <div style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
                                 <button class="btn-outline" onclick="app.clearPayrollForm()"><i class="fa-solid fa-eraser"></i> Clear</button>
                                 <button class="btn-yellow-solid btn" onclick="app.addManualPayroll()"><i class="fa-solid fa-plus"></i> Add to Payslip</button>
@@ -304,21 +274,10 @@
 
                         <div class="table-responsive" style="overflow: visible;">
                             <table class="sheet-table" id="table-payroll">
-                                <thead>
-                                    <tr>
-                                        <th>NAME</th>
-                                        <th>JOB DESCRIPTION</th>
-                                        <th>AWARD COST (₱)</th>
-                                        <th style="width: 120px; text-align: center;">ACTION</th>
-                                    </tr>
-                                </thead>
+                                <thead><tr><th>NAME</th><th>JOB DESCRIPTION</th><th>AWARD COST (₱)</th><th style="width: 120px; text-align: center;">ACTION</th></tr></thead>
                                 <tbody id="payroll-content"></tbody>
                                 <tfoot style="background: #F3F4F6;">
-                                    <tr>
-                                        <td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-muted);">TOTAL (₱):</td>
-                                        <td style="font-weight: 800; color: var(--text-dark); font-size: 1.1rem;" id="payroll-total">₱0.00</td>
-                                        <td style="text-align: center; color: var(--text-muted); font-weight: 600;" id="payroll-count">0 Worker(s)</td>
-                                    </tr>
+                                    <tr><td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-muted);">TOTAL (₱):</td><td style="font-weight: 800; color: var(--text-dark); font-size: 1.1rem;" id="payroll-total">₱0.00</td><td style="text-align: center; color: var(--text-muted); font-weight: 600;" id="payroll-count">0 Worker(s)</td></tr>
                                 </tfoot>
                             </table>
                         </div>
@@ -331,14 +290,7 @@
                         <h3 style="margin-bottom: 24px; color: var(--text-dark); font-weight:800; font-size:1.2rem;"><i class="fa-solid fa-box-archive"></i> Payroll History (Last 12 Months)</h3>
                         <div class="table-responsive" style="overflow: visible;">
                             <table class="sheet-table" id="table-payroll-history">
-                                <thead>
-                                    <tr>
-                                        <th>WORKER NAME</th>
-                                        <th>TOTAL CYCLES</th>
-                                        <th>TOTAL HISTORICAL PAYOUT (₱)</th>
-                                        <th style="width: 120px; text-align: center;">ACTION</th>
-                                    </tr>
-                                </thead>
+                                <thead><tr><th>WORKER NAME</th><th>TOTAL CYCLES</th><th>TOTAL HISTORICAL PAYOUT (₱)</th><th style="width: 120px; text-align: center;">ACTION</th></tr></thead>
                                 <tbody id="payroll-history-content"></tbody>
                             </table>
                         </div>
@@ -447,6 +399,6 @@
         <img id="resume-img" style="margin:auto; display:block; max-width:80%; max-height:90vh; margin-top:5vh; border-radius: var(--radius-md); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
     </div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>

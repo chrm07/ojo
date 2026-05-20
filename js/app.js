@@ -114,13 +114,12 @@ const app = {
     loadDashboard: async function() {
         const stats = await this.request('get_stats');
         
-        // FIX: Bilangin natin nang direkta mula sa table ang projects para 100% laging tugma sa frontend
         const projects = await this.request('get_projects');
         window.allProjectsData = projects;
         
         let ongoingCount = 0;
         if (projects && Array.isArray(projects)) {
-            ongoingCount = projects.filter(p => (p.status || '').toLowerCase().trim() === 'ongoing').length;
+            ongoingCount = projects.filter(p => (p.status || '').toLowerCase().trim() === 'ongoing' || (p.status || '').toLowerCase().trim() === 'pending').length;
         } else {
             ongoingCount = stats.projects || 0;
         }
@@ -139,14 +138,14 @@ const app = {
         const today = new Date(); today.setHours(0,0,0,0);
         let deadlines = [];
         
-        projects.forEach(p => {
-            // FIX: Huwag na isama ang Completed na projects sa bilang ng Deadlines
-            if ((p.status || '').toLowerCase().trim() === 'completed') return; 
-            
-            let sDate = new Date(p.start_date); 
-            let dOffset = Math.floor((sDate - today) / (1000 * 60 * 60 * 24));
-            deadlines.push({ type: 'project', icon: 'fa-city', site: p.location, action: p.name, daysOffset: dOffset, actualDate: sDate });
-        });
+        if (Array.isArray(projects)) {
+            projects.forEach(p => {
+                if ((p.status || '').toLowerCase().trim() === 'completed') return; 
+                let sDate = new Date(p.start_date); 
+                let dOffset = Math.floor((sDate - today) / (1000 * 60 * 60 * 24));
+                deadlines.push({ type: 'project', icon: 'fa-city', site: p.location, action: p.name, daysOffset: dOffset, actualDate: sDate });
+            });
+        }
 
         deadlines = deadlines.filter(t => t.daysOffset <= 30).sort((a, b) => a.daysOffset - b.daysOffset);
         tbody.innerHTML = '';
@@ -156,7 +155,6 @@ const app = {
             let statusBadge = ''; 
             let dateText = task.actualDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-            // FIX: Plain text na lang sa badges
             if (task.daysOffset < 0) { 
                 statusBadge = `<span class="badge" style="background: #FEE2E2; color: #EF4444; border: 1px solid #FCA5A5;">OVERDUE (${Math.abs(task.daysOffset)} DAYS LATE)</span>`; 
             } else if (task.daysOffset === 0) { 
@@ -216,18 +214,26 @@ const app = {
             const matchedCash = (db.cash_releases || []).filter(c => c.name.toLowerCase().includes(q) || (c.description && c.description.toLowerCase().includes(q)) || c.category.toLowerCase().includes(q));
 
             matchedProjs.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('projects'); app.openProjectDetails(${item.id}, '${item.name.replace(/'/g, "\\'")}', '${item.location.replace(/'/g, "\\'")}')"><div class="search-icon-box"><i class="fa-solid fa-city"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.location} | Foreman: ${item.foreman || 'N/A'}</p><span class="search-category-badge">Projects</span></div></div>`; });
-            matchedUsers.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('users'); setTimeout(()=>app.openSkillFolder('${item.skills || 'Uncategorized'}'), 200)"><div class="search-icon-box" style="color:var(--success);"><i class="fa-solid fa-user-helmet"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.position || 'Worker'} | ${item.skills || 'N/A'}</p><span class="search-category-badge" style="color:var(--success);">Record List</span></div></div>`; resultsHTML += `<div class="search-result-item" onclick="app.showModule('payroll'); setTimeout(() => { document.getElementById('pay-name').value = '${item.name.replace(/'/g, "\\'")}'; }, 100);"><div class="search-icon-box" style="color:var(--warning);"><i class="fa-solid fa-file-invoice-dollar"></i></div><div class="search-content"><h4>${item.name}</h4><p>Log Cash Advance for this worker</p><span class="search-category-badge" style="color:var(--warning);">Payroll</span></div></div>`; });
-            matchedSuppliers.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('materials'); app.switchMatTab('suppliers');"><div class="search-icon-box" style="color:#10B981;"><i class="fa-solid fa-truck-field"></i></div><div class="search-content"><h4>${item.name}</h4><p>Provides: ${item.materials}</p><span class="search-category-badge" style="color:#10B981;">Supplier</span></div></div>`; });
-            matchedInventory.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('materials'); app.switchMatTab('inventory');"><div class="search-icon-box" style="color:#3B82F6;"><i class="fa-solid fa-boxes-stacked"></i></div><div class="search-content"><h4>${item.name}</h4><p>Stock: ${item.stock} ${item.unit} | Category: ${item.category}</p><span class="search-category-badge" style="color:#3B82F6;">Inventory</span></div></div>`; });
-            matchedAwards.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('award_costs');"><div class="search-icon-box" style="color:#8B5CF6;"><i class="fa-solid fa-clipboard-list"></i></div><div class="search-content"><h4>${item.scope_of_work}</h4><p>Amount: ₱${parseFloat(item.amount).toLocaleString('en-US')}</p><span class="search-category-badge" style="color:#8B5CF6;">Award Cost</span></div></div>`; });
-            matchedCash.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('cash_release');"><div class="search-icon-box" style="color:#EF4444;"><i class="fa-solid fa-hand-holding-dollar"></i></div><div class="search-content"><h4>${item.name} - ${item.category}</h4><p>${item.description || 'No Description'} | Amount: ₱${parseFloat(item.amount).toLocaleString('en-US')}</p><span class="search-category-badge" style="color:#EF4444;">Cash Release</span></div></div>`; });
+            matchedUsers.forEach(item => { 
+                let safeName = (item.name||'').replace(/'/g, "\\'");
+                let safeId = (item.name||'').replace(/[^a-zA-Z0-9]/g, '-');
+                
+                resultsHTML += `<div class="search-result-item" onclick="app.showModule('users'); setTimeout(()=>app.openSkillFolder('${item.skills || 'Uncategorized'}'), 200)"><div class="search-icon-box" style="color:var(--success);"><i class="fa-solid fa-user-helmet"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.position || 'Worker'} | ${item.skills || 'N/A'}</p><span class="search-category-badge" style="color:var(--success);">Record List</span></div></div>`; 
+                
+                resultsHTML += `<div class="search-result-item" onclick="app.showModule('payroll'); setTimeout(() => { document.getElementById('pay-name').value = '${safeName}'; const r = document.getElementById('nested-${safeId}'); if(r){ r.classList.add('active'); r.scrollIntoView({behavior: 'smooth', block: 'center'}); } }, 300);"><div class="search-icon-box" style="color:var(--warning);"><i class="fa-solid fa-file-invoice-dollar"></i></div><div class="search-content"><h4>${item.name}</h4><p>Log Cash Advance / Compute Balance</p><span class="search-category-badge" style="color:var(--warning);">Payroll</span></div></div>`; 
+            });
 
             if(resultsHTML === '') { resultsHTML = `<p style="padding: 10px; color: var(--text-muted);">No results found.</p>`; }
             content.innerHTML = resultsHTML;
         }, 400); 
     },
 
-    clearGlobalSearch: function() { document.getElementById('global-search-input').value = ''; this.handleGlobalSearch(''); const deadlinesContainer = document.getElementById('upcoming-deadlines-container'); if(deadlinesContainer) deadlinesContainer.style.display = 'block'; },
+    clearGlobalSearch: function() { 
+        document.getElementById('global-search-input').value = ''; 
+        this.handleGlobalSearch(''); 
+        const deadlinesContainer = document.getElementById('upcoming-deadlines-container');
+        if(deadlinesContainer) deadlinesContainer.style.display = 'block'; 
+    },
 
     // ==========================================
     // PROJECTS & WORKSPACE
@@ -254,6 +260,7 @@ const app = {
         document.getElementById('proj-name').value = ''; document.getElementById('proj-loc').value = ''; document.getElementById('proj-desc').value = ''; document.getElementById('proj-start').value = ''; document.getElementById('proj-client').value = ''; document.getElementById('proj-foreman').value = ''; fileInput.value = ''; this.handleFileSelect(fileInput); 
         
         await this.loadProjects(); 
+        this.loadProjectOptionsForManpower(); 
         this.loadDashboard(); 
         this.showToast("Project successfully created.");
     },
@@ -289,7 +296,6 @@ const app = {
     updateProjectStatus: async function(id, status) { 
         await this.request('update_project_status', { id, status }); 
         
-        // FIX: HINTAYIN MATAPOS MAG FETCH BAGO MAG REFRESH ANG DASHBOARD
         await this.loadProjects(); 
         this.loadDashboard(); 
     },
@@ -309,7 +315,12 @@ const app = {
         document.getElementById('dynamic-breadcrumbs').innerHTML = `<span class="breadcrumb-link" onclick="app.showModule('dashboard')"><i class="fa-solid fa-house"></i> Home</span><i class="fa-solid fa-chevron-right separator"></i><span class="breadcrumb-link" onclick="app.showModule('projects')">Projects (Sites)</span><i class="fa-solid fa-chevron-right separator"></i><b id="breadcrumb-current" class="active-crumb">Workspace</b>`;
         this.switchProjectTab('progress');
     },
-    closeProjectDetails: function() { this.currentProjectId = null; document.getElementById('projects-list-view').style.display = 'block'; document.getElementById('project-details-view').style.display = 'none'; document.getElementById('dynamic-breadcrumbs').innerHTML = `<span class="breadcrumb-link" onclick="app.showModule('dashboard')"><i class="fa-solid fa-house"></i> Home</span><i class="fa-solid fa-chevron-right separator"></i><b id="breadcrumb-current" class="active-crumb">Projects (Sites)</b>`; },
+
+    closeProjectDetails: function() {
+        this.currentProjectId = null;
+        document.getElementById('projects-list-view').style.display = 'block'; document.getElementById('project-details-view').style.display = 'none';
+        document.getElementById('dynamic-breadcrumbs').innerHTML = `<span class="breadcrumb-link" onclick="app.showModule('dashboard')"><i class="fa-solid fa-house"></i> Home</span><i class="fa-solid fa-chevron-right separator"></i><b id="breadcrumb-current" class="active-crumb">Projects (Sites)</b>`;
+    },
 
     switchProjectTab: function(tabId) {
         document.getElementById('tab-progress').classList.remove('active'); document.getElementById('tab-materials').classList.remove('active'); document.getElementById('tab-manpower').classList.remove('active');
@@ -382,8 +393,8 @@ const app = {
         const allProjs = window.allProjectsData || await this.request('get_projects'); const currentP = allProjs.find(p => p.id == this.currentProjectId);
         if(currentP) document.getElementById('issue-receiver').value = currentP.foreman || '';
         const issuances = projData.issuances || []; const tbody = document.getElementById('issuance-history-content'); tbody.innerHTML = ''; let totalItems = 0; let totalCost = 0;
-        if(issuances.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state-wrapper"><i class="fa-solid fa-clipboard"></i><p>No materials issued to this site yet.</p></td></tr>`; } 
-        else { issuances.forEach(i => { const rowCost = i.qty * i.unit_cost; totalItems += parseInt(i.qty); totalCost += parseFloat(rowCost); let fmtCost = parseFloat(rowCost).toLocaleString('en-US', {minimumFractionDigits: 2}); tbody.innerHTML += `<tr><td style="color:var(--text-muted); font-weight:600;">${i.issue_date.split(' ')[0]}</td><td><b style="color:var(--text-dark);">${i.item_name}</b></td><td style="font-weight:700;">${i.qty} <span style="color:var(--text-muted); font-weight:500;">${i.unit}</span></td><td style="color:var(--success); font-weight:700;">₱${fmtCost}</td><td>${i.receiver}</td></tr>`; }); }
+        if(issuances.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state-wrapper"><i class="fa-solid fa-clipboard"></i><p>No materials issued to this site yet.</p></td></tr>`;
+        } else { issuances.forEach(i => { const rowCost = i.qty * i.unit_cost; totalItems += parseInt(i.qty); totalCost += parseFloat(rowCost); let fmtCost = parseFloat(rowCost).toLocaleString('en-US', {minimumFractionDigits: 2}); tbody.innerHTML += `<tr><td style="color:var(--text-muted); font-weight:600;">${i.issue_date.split(' ')[0]}</td><td><b style="color:var(--text-dark);">${i.item_name}</b></td><td style="font-weight:700;">${i.qty} <span style="color:var(--text-muted); font-weight:500;">${i.unit}</span></td><td style="color:var(--success); font-weight:700;">₱${fmtCost}</td><td>${i.receiver}</td></tr>`; }); }
         document.getElementById('proj-summary-qty').innerText = `${totalItems} Total Qty`; document.getElementById('proj-summary-cost').innerText = `₱${parseFloat(totalCost).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
     },
     issueMaterial: async function() {
@@ -451,60 +462,34 @@ const app = {
     // ==========================================
     // MODULE: MANPOWER (RECORD LIST) 
     // ==========================================
-    loadProjectOptionsForManpower: async function() {
-        const proj = await this.request('get_projects'); const select = document.getElementById('man-project'); if (!select) return; select.innerHTML = '<option value="">Select Project</option>';
-        if(proj) { const activeProjects = proj.filter(p => (p.status || '').toLowerCase().trim() === 'ongoing' || (p.status || '').toLowerCase().trim() === 'pending'); activeProjects.forEach(p => select.innerHTML += `<option value="${p.id}">${p.name} - ${p.location}</option>`); }
+    
+    loadProjectOptionsForManpower: async function() { 
+        try {
+            const proj = await this.request('get_projects'); 
+            const select = document.getElementById('man-project'); 
+            if (!select) return; 
+            select.innerHTML = '<option value="">Select Project (Optional)</option>'; 
+            if(proj && Array.isArray(proj)) { 
+                proj.forEach(p => select.innerHTML += `<option value="${p.id}">${p.name} - ${p.location}</option>`); 
+            } 
+        } catch(e) { console.error(e); }
     },
-
+    
     populateManpowerDropdowns: async function() {
         const skills = await this.request('get_manpower_skills'); const select = document.getElementById('man-skills'); if (!select) return; 
         select.innerHTML = '<option value="">Select Skill / Folder</option>';
         if(skills && Array.isArray(skills)) { skills.forEach(s => { const sName = s.skill_name || 'Uncategorized'; if(sName !== 'Uncategorized') { select.innerHTML += `<option value="${sName}">${sName}</option>`; } }); }
         select.innerHTML += `<option value="ADD_NEW" style="font-weight: 800; color: var(--primary-hover);">+ Add New Folder (Via Dropdown)</option>`;
     },
-
     handleSkillChange: function(val) { const newCatInput = document.getElementById('man-skills-new'); if(!newCatInput) return; if(val === 'ADD_NEW') { newCatInput.style.display = 'block'; newCatInput.focus(); } else { newCatInput.style.display = 'none'; newCatInput.value = ''; } },
     handlePosChange: function(val) { const newPosInput = document.getElementById('man-pos-new'); if(!newPosInput) return; if(val === 'ADD_NEW') { newPosInput.style.display = 'block'; newPosInput.focus(); } else { newPosInput.style.display = 'none'; newPosInput.value = ''; } },
     
-    // NEW FOLDER CRUD FUNCTIONS
-    addFolderOnly: async function() {
-        const name = prompt("Enter new Empty Folder / Skill Category name:");
-        if(name && name.trim() !== '') {
-            await this.request('add_skill_category', { name: name.trim() });
-            this.loadManpowerFolders(); this.populateManpowerDropdowns(); this.showToast('Empty Folder created.');
-        }
-    },
-    editFolder: async function(oldName) {
-        const newName = prompt("Rename Folder '" + oldName + "' to:", oldName);
-        if(newName && newName.trim() !== '' && newName !== oldName) {
-            await this.request('edit_skill_category', { old_name: oldName, new_name: newName.trim() });
-            this.loadManpowerFolders(); this.populateManpowerDropdowns(); this.showToast('Folder renamed successfully.');
-        }
-    },
-    deleteFolder: async function(name) {
-        if(confirm(`Are you sure you want to delete the folder "${name}"? WARNING: This will also PERMANENTLY DELETE all active worker records inside this folder.`)) {
-            await this.request('delete_skill_category', { name: name });
-            this.loadManpowerFolders(); this.populateManpowerDropdowns(); this.showToast('Folder and records deleted.');
-        }
-    },
+    addFolderOnly: async function() { const name = prompt("Enter new Empty Folder / Skill Category name:"); if(name && name.trim() !== '') { await this.request('add_skill_category', { name: name.trim() }); this.loadManpowerFolders(); this.populateManpowerDropdowns(); this.showToast('Empty Folder created.'); } },
+    editFolder: async function(oldName) { const newName = prompt("Rename Folder '" + oldName + "' to:", oldName); if(newName && newName.trim() !== '' && newName !== oldName) { await this.request('edit_skill_category', { old_name: oldName, new_name: newName.trim() }); this.loadManpowerFolders(); this.populateManpowerDropdowns(); this.showToast('Folder renamed successfully.'); } },
+    deleteFolder: async function(name) { if(confirm(`Are you sure you want to delete the folder "${name}"? WARNING: This will also PERMANENTLY DELETE all active worker records inside this folder.`)) { await this.request('delete_skill_category', { name: name }); this.loadManpowerFolders(); this.populateManpowerDropdowns(); this.showToast('Folder and records deleted.'); } },
 
-    // ARCHIVE MANPOWER
-    archiveManpower: async function(id) {
-        if(confirm('Archive this worker? They will be removed from active sites and sent to the Archived folder.')) {
-            await this.request('archive_manpower', { id: id });
-            this.showToast('Worker archived.');
-            const currentTitleRaw = document.getElementById('current-skill-title').innerText.trim();
-            const cleanTitle = currentTitleRaw.replace('Rename Folder', '').replace('Delete Folder', '').trim();
-            if(cleanTitle) { this.openSkillFolder(cleanTitle); } else { this.loadManpowerFolders(); }
-        }
-    },
-    restoreManpower: async function(id) {
-        if(confirm('Restore this worker back to active status?')) {
-            await this.request('restore_manpower', { id: id });
-            this.showToast('Worker restored.');
-            this.openArchivedFolder(); 
-        }
-    },
+    archiveManpower: async function(id) { if(confirm('Archive this worker? They will be removed from active sites and sent to the Archived folder.')) { await this.request('archive_manpower', { id: id }); this.showToast('Worker archived.'); const currentTitleRaw = document.getElementById('current-skill-title').innerText.trim(); const cleanTitle = currentTitleRaw.replace('Rename Folder', '').replace('Delete Folder', '').trim(); if(cleanTitle) { this.openSkillFolder(cleanTitle); } else { this.loadManpowerFolders(); } } },
+    restoreManpower: async function(id) { if(confirm('Restore this worker back to active status?')) { await this.request('restore_manpower', { id: id }); this.showToast('Worker restored.'); this.openArchivedFolder(); } },
 
     addManpower: async function() {
         const name = document.getElementById('man-name').value; 
@@ -538,6 +523,18 @@ const app = {
         grid.innerHTML += `<div class="stat-card" style="cursor:pointer; background:#FEF2F2; border-color:#FCA5A5; min-height: 100px;" onclick="app.openArchivedFolder()"><div class="stat-details"><h3 style="font-size: 1rem; color:var(--danger); font-weight:800;"><i class="fa-solid fa-box-archive" style="margin-right: 4px;"></i> Archived Records</h3><span style="color:var(--text-muted); font-size:0.85rem;">Inactive Worker Pool</span></div></div>`;
     },
 
+    uploadBioData: async function(workerId, inputElement) {
+        if (!inputElement.files || inputElement.files.length === 0) return;
+        const fd = new FormData(); fd.append('worker_id', workerId); fd.append('photo', inputElement.files[0]);
+        const res = await this.request('update_bio_data', fd, true);
+        if (res.status === 'success') {
+            this.showToast("Bio Data updated successfully.");
+            const currentTitleRaw = document.getElementById('current-skill-title').innerText.trim(); 
+            const cleanTitle = currentTitleRaw.replace('Rename Folder', '').replace('Delete Folder', '').trim(); 
+            if(cleanTitle) { this.openSkillFolder(cleanTitle); }
+        } else { this.showToast(res.message, 'error'); }
+    },
+
     openSkillFolder: async function(skillName) {
         document.getElementById('manpower-folders-view').style.display = 'none'; document.getElementById('manpower-table-view').style.display = 'block'; 
         
@@ -559,9 +556,20 @@ const app = {
         if (!workerList || workerList.length === 0) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No records found.</td></tr>`; return; }
 
         workerList.forEach(w => {
-            let resumeButton = `<span style="color:var(--text-muted); font-size: 0.85rem;">No Bio Data</span>`;
-            if (w.photo) resumeButton = `<button class="btn-outline btn-sm" onclick="app.viewAttachedFile('${w.photo}')"><i class="fa-solid fa-image"></i> View</button>`;
-            tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${w.name}</b> <br> <small style="color:var(--text-muted);">ID: ${w.id}</small></td><td>${w.project_name || '<small style="color:var(--text-muted);">Unassigned</small>'}</td><td>${w.skills || 'Uncategorized'}</td><td>${w.position || 'N/A'}</td><td style="font-weight:600;">₱${w.salary || 0}</td><td>${resumeButton}</td><td><button class="btn-outline btn-sm" style="color:var(--danger); border-color:#FCA5A5;" onclick="app.archiveManpower(${w.id})"><i class="fa-solid fa-box-archive"></i> Archive</button></td></tr>`;
+            let photoUrl = w.photo || w.photo_path; 
+            let resumeButton = ''; 
+            let avatarHtml = `<div style="width: 36px; height: 36px; border-radius: 50%; background: #E5E7EB; display: flex; align-items: center; justify-content: center; color: #9CA3AF;"><i class="fa-solid fa-user"></i></div>`;
+            
+            if (photoUrl) { 
+                resumeButton = `<button class="btn-outline btn-sm" onclick="app.viewAttachedFile('${photoUrl}')"><i class="fa-solid fa-image"></i> View</button>`; 
+                avatarHtml = `<img src="${photoUrl}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); cursor:pointer;" onclick="app.viewAttachedFile('${photoUrl}')" onerror="this.src='https://ui-avatars.com/api/?name=${w.name}&background=FACC15&color=000'">`;
+            } else {
+                resumeButton = `<label class="btn-outline btn-sm" style="cursor:pointer; margin:0; padding: 4px 8px; font-size:0.75rem; border-color:var(--primary); color:var(--text-dark); background:#FEFCE8;"><i class="fa-solid fa-upload"></i> Add Bio Data<input type="file" style="display:none;" accept="image/*" onchange="app.uploadBioData(${w.id}, this)"></label>`;
+            }
+            
+            let nameDisplay = `<div style="display:flex; align-items:center; gap:10px;">${avatarHtml}<div><b style="color:var(--text-dark);">${w.name}</b> <br> <small style="color:var(--text-muted);">ID: ${w.id}</small></div></div>`;
+
+            tbody.innerHTML += `<tr><td>${nameDisplay}</td><td>${w.project_name || '<small style="color:var(--text-muted);">Unassigned</small>'}</td><td>${w.skills || 'Uncategorized'}</td><td>${w.position || 'N/A'}</td><td style="font-weight:600;">₱${w.salary || 0}</td><td>${resumeButton}</td><td><button class="btn-outline btn-sm" style="color:var(--danger); border-color:#FCA5A5;" onclick="app.archiveManpower(${w.id})"><i class="fa-solid fa-box-archive"></i> Archive</button></td></tr>`;
         });
     },
 
@@ -597,66 +605,110 @@ const app = {
     // MODULE: PAYROLL (SMART LEDGER SYNC)
     // ==========================================
     formatCurrencyInput: function(input) { let val = input.value.replace(/[^0-9.]/g, ''); let parts = val.split('.'); parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ","); input.value = parts.join('.'); },
-    populatePayrollDatalists: async function() { const users = await this.request('get_active_manpower'); const datalist = document.getElementById('worker-names-list'); if(!datalist) return; datalist.innerHTML = ''; if(users && Array.isArray(users)) { users.forEach(u => { datalist.innerHTML += `<option value="${u.name}">`; }); } const jobs = await this.request('get_award_costs'); const jobList = document.getElementById('pay-job-list'); if(jobList) { jobList.innerHTML = ''; if(jobs && Array.isArray(jobs)) { jobs.forEach(j => { jobList.innerHTML += `<option value="${j.scope_of_work}">`; }); } } },
+    populatePayrollDatalists: async function() {
+        const users = await this.request('get_active_manpower'); const datalist = document.getElementById('worker-names-list'); if(!datalist) return; datalist.innerHTML = ''; if(users && Array.isArray(users)) { users.forEach(u => { datalist.innerHTML += `<option value="${u.name}">`; }); }
+        const jobs = await this.request('get_award_costs'); const jobList = document.getElementById('pay-job-list'); if(jobList) { jobList.innerHTML = ''; if(jobs && Array.isArray(jobs)) { jobs.forEach(j => { jobList.innerHTML += `<option value="${j.scope_of_work}">`; }); } }
+    },
     clearPayrollForm: function() { ['pay-date', 'pay-name', 'pay-job', 'pay-award', 'pay-advance'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = ''; }); },
 
     addManualPayroll: async function() {
-        const date = document.getElementById('pay-date').value; const name = document.getElementById('pay-name').value; const job = document.getElementById('pay-job').value; let rawAward = document.getElementById('pay-award').value.replace(/,/g, ''); let rawAdvance = document.getElementById('pay-advance').value.replace(/,/g, ''); const award = parseFloat(rawAward || 0); const advance = parseFloat(rawAdvance || 0);
-        if (!name || !job) { this.showToast('Name and Job Description required.', 'error'); return; }
-        const res = await this.request('add_payroll', { date: date || new Date().toISOString().split('T')[0], name: name, job_desc: job, award: award, advance: advance });
-        if (res && res.status === 'success') { this.clearPayrollForm(); this.renderPayrollTab(); 
+        const date = document.getElementById('pay-date').value; const name = document.getElementById('pay-name').value; const job = document.getElementById('pay-job').value; 
+        let rawAward = document.getElementById('pay-award').value.replace(/,/g, ''); let rawAdvance = document.getElementById('pay-advance').value.replace(/,/g, ''); const award = parseFloat(rawAward || 0); const advance = parseFloat(rawAdvance || 0);
         
-        this.loadDashboard();
-        this.showToast('Transaction logged!'); } else { this.showToast(res ? res.message : 'Unknown database error.', 'error'); }
+        if (!name || !job) { this.showToast('Name and Job Description required.', 'error'); return; }
+
+        const res = await this.request('add_payroll', { date: date || new Date().toISOString().split('T')[0], name: name, job_desc: job, award: award, advance: advance });
+        if (res && res.status === 'success') { this.clearPayrollForm(); this.renderPayrollTab(); this.loadDashboard(); this.showToast('Transaction logged!'); } else { this.showToast(res ? res.message : 'Unknown database error.', 'error'); }
     },
 
     openEditPayrollModal: function(id, award, advance) { document.getElementById('edit-pay-id').value = id; document.getElementById('edit-pay-award').value = award ? parseFloat(award).toLocaleString('en-US', {minimumFractionDigits: 2}) : ''; document.getElementById('edit-pay-advance').value = advance ? parseFloat(advance).toLocaleString('en-US', {minimumFractionDigits: 2}) : ''; this.openModal('modal-edit-payroll'); },
     saveEditedPayroll: async function() {
         const id = document.getElementById('edit-pay-id').value; const rawAward = document.getElementById('edit-pay-award').value.replace(/,/g, ''); const rawAdvance = document.getElementById('edit-pay-advance').value.replace(/,/g, ''); const award = parseFloat(rawAward || 0); const advance = parseFloat(rawAdvance || 0);
+
         if(!isNaN(award) && !isNaN(advance)) { await this.request('edit_payroll_entry', { id: id, award_cost: award, cash_advance: advance }); this.closeModal('modal-edit-payroll'); this.renderPayrollTab(); this.loadDashboard(); this.showToast('Record updated. Balances recalculated.'); } else { this.showToast('Invalid numbers entered.', 'error'); }
     },
-    deletePayrollEntry: async function(id) { if(confirm("Are you sure you want to delete this payroll record? It will automatically recalculate the balances.")) { await this.request('delete_payroll_entry', { id: id }); this.renderPayrollTab(); this.loadDashboard(); this.showToast('Record deleted. Balances updated.'); } },
 
-    togglePayrollRow: function(workerNameSafe, btn) { const row = document.getElementById(`nested-${workerNameSafe}`); const isExpanding = !row.classList.contains('active'); document.querySelectorAll('.nested-row').forEach(r => r.classList.remove('active')); document.querySelectorAll('.btn-toggle-details').forEach(b => b.innerHTML = '<i class="fa-solid fa-eye"></i> View Details'); if(isExpanding) { row.classList.add('active'); if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details'; } },
+    deletePayrollEntry: async function(id) {
+        if(confirm("Are you sure you want to delete this payroll record? It will automatically recalculate the balances.")) { await this.request('delete_payroll_entry', { id: id }); this.renderPayrollTab(); this.loadDashboard(); this.showToast('Record deleted. Balances updated.'); }
+    },
+
+    togglePayrollRow: function(workerNameSafe, btn) {
+        const row = document.getElementById(`nested-${workerNameSafe}`); const isExpanding = !row.classList.contains('active');
+        document.querySelectorAll('.nested-row').forEach(r => r.classList.remove('active')); document.querySelectorAll('.btn-toggle-details').forEach(b => b.innerHTML = '<i class="fa-solid fa-eye"></i> View Details');
+        if(isExpanding) { row.classList.add('active'); if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details'; }
+    },
 
     renderPayrollTab: async function() {
         const tbody = document.getElementById('payroll-content'); if(!tbody) return; tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving live payroll data...</td></tr>`;
         const completedTasks = await this.request('get_all_completed_tasks'); const manualPayrolls = await this.request('get_payroll'); let aggregatedData = {};
+
         if(completedTasks && Array.isArray(completedTasks)) { completedTasks.forEach(task => { const worker = task.assigned_worker; if(!aggregatedData[worker]) aggregatedData[worker] = { job: task.category, txns: [] }; aggregatedData[worker].txns.push({ id: task.id, source: 'auto', project: task.project_name, blkLot: task.project_location || '-', award: parseFloat(task.award_cost) || 0, date: task.completion_date || 'N/A', sale: 0 }); }); }
         if(manualPayrolls && Array.isArray(manualPayrolls)) { manualPayrolls.forEach(entry => { if(!aggregatedData[entry.name]) aggregatedData[entry.name] = { job: entry.job_description, txns: [] }; aggregatedData[entry.name].job = entry.job_description; aggregatedData[entry.name].txns.push({ id: entry.id, source: 'manual', project: "Cash Advance Log", blkLot: entry.job_description, award: parseFloat(entry.award_cost) || 0, date: entry.pay_date, sale: parseFloat(entry.cash_advance) || 0 }); }); }
-        Object.keys(aggregatedData).forEach(workerName => { let data = aggregatedData[workerName]; data.txns.sort((a, b) => new Date(a.date) - new Date(b.date)); let runningAward = 0; let runningAdvance = 0; data.txns.forEach(txn => { runningAward += txn.award; runningAdvance += txn.sale; txn.overall = runningAdvance; txn.balance = runningAward - runningAdvance; }); data.totalAward = runningAward; data.totalSale = runningAdvance; data.latestBalance = runningAward - runningAdvance; });
+
+        Object.keys(aggregatedData).forEach(workerName => {
+            let data = aggregatedData[workerName]; data.txns.sort((a, b) => new Date(a.date) - new Date(b.date)); 
+            let runningAward = 0; let runningAdvance = 0;
+            data.txns.forEach(txn => { runningAward += txn.award; runningAdvance += txn.sale; txn.overall = runningAdvance; txn.balance = runningAward - runningAdvance; });
+            data.totalAward = runningAward; data.totalSale = runningAdvance; data.latestBalance = runningAward - runningAdvance;
+        });
+
         tbody.innerHTML = ''; let grandTotal = 0; let workerCount = 0;
+
         if (Object.keys(aggregatedData).length === 0) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state-wrapper"><i class="fa-solid fa-file-invoice-dollar"></i><p>No payroll data found. Complete tasks in workspace to sync.</p></td></tr>`; document.getElementById('payroll-total').innerText = '₱0.00'; document.getElementById('payroll-count').innerText = '0 Worker(s)'; return; }
+
         Object.keys(aggregatedData).forEach(workerName => {
             workerCount++; const data = aggregatedData[workerName]; grandTotal += data.latestBalance; let safeId = workerName.replace(/[^a-zA-Z0-9]/g, '-'); 
             tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${workerName}</b></td><td><span class="badge ongoing">${data.job}</span></td><td style="font-weight: 800; color:var(--text-dark);">₱${data.totalAward.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td style="text-align: center;"><button class="btn-outline btn-toggle-details" id="btn-toggle-${safeId}" style="height: 26px; padding: 0 8px; font-size: 0.75rem;" onclick="app.togglePayrollRow('${safeId}', this)"><i class="fa-solid fa-eye"></i> View Details</button></td></tr>`;
+
             let nestedRows = '';
             data.txns.forEach(b => {
                 let awardText = b.award > 0 ? `₱${b.award.toLocaleString('en-US', {minimumFractionDigits:2})}` : `<span style="color:#D1D5DB;">-</span>`; let saleText = b.sale > 0 ? `-₱${b.sale.toLocaleString('en-US', {minimumFractionDigits:2})}` : `<span style="color:var(--danger);">-₱0.00</span>`;
                 let actionHtml = b.source === 'manual' ? `<button class="btn-outline" style="padding: 2px 6px; font-size: 0.7rem; margin-right: 2px;" onclick="app.openEditPayrollModal(${b.id}, ${b.award}, ${b.sale})"><i class="fa-solid fa-pencil"></i></button><button class="btn-danger" style="padding: 2px 6px; font-size: 0.7rem;" onclick="app.deletePayrollEntry(${b.id})"><i class="fa-solid fa-trash"></i></button>` : `<small style="color:var(--text-muted); font-size: 0.7rem;">Auto-Sync</small>`;
                 nestedRows += `<tr><td><b>${b.project}</b></td><td>${b.blkLot}</td><td style="font-weight:600; color:var(--text-dark);">${awardText}</td><td style="color:var(--text-muted);">${b.date}</td><td style="color:var(--danger);">${saleText}</td><td>₱${b.overall.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="font-weight:800; color:var(--success);">₱${b.balance.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td>${actionHtml}</td></tr>`;
             });
+
             nestedRows += `<tr style="background-color: #FEFCE8; border-top: 2px solid var(--primary);"><td colspan="2" style="text-align: right; font-weight: 800; color: var(--text-dark);">SUMMARY TOTAL:</td><td style="font-weight: 800; color: var(--text-dark);">₱${data.totalAward.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td></td><td style="font-weight: 800; color: var(--danger);">-₱${data.totalSale.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td></td><td style="font-weight: 900; color: var(--success); font-size: 0.9rem;">₱${data.latestBalance.toLocaleString('en-US', {minimumFractionDigits:2})}</td><td></td></tr>`;
             tbody.innerHTML += `<tr class="nested-row" id="nested-${safeId}"><td colspan="4" style="padding: 0;"><div class="nested-table-container"><h4 style="margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Award Cost Breakdown for ${workerName}</h4><table class="nested-table nested-header-red"><thead><tr><th>PROJECT</th><th>BLK & LOT</th><th>AWARD COST (₱)</th><th>DATE</th><th>SALE / CASH ADV. (₱)</th><th>OVERALL (₱)</th><th>BALANCE (₱)</th><th style="width: 70px;">ACTION</th></tr></thead><tbody>${nestedRows}</tbody></table></div></td></tr>`;
         });
+
         document.getElementById('payroll-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('payroll-count').innerText = `${workerCount} Worker(s)`;
     },
 
-    resetDatabasePayroll: async function() { if(confirm("This will close the cycle and archive ONLY the workers who have fully consumed their Award Cost (Balance = 0). Continue?")) { const res = await this.request('archive_and_reset_payroll'); this.renderPayrollTab(); if(res && res.archived > 0) { this.showToast(`Cycle Closed. ${res.archived} completed records moved to History.`); } else { this.showToast("No fully completed records (Balance = 0) to archive.", "warning"); } } },
+    resetDatabasePayroll: async function() { 
+        if(confirm("This will close the cycle and archive ONLY the workers who have fully consumed their Award Cost (Balance = 0). Continue?")) { 
+            const res = await this.request('archive_and_reset_payroll'); 
+            this.renderPayrollTab(); 
+            if(res && res.archived > 0) { this.showToast(`Cycle Closed. ${res.archived} completed records moved to History.`); } 
+            else { this.showToast("No fully completed records (Balance = 0) to archive.", "warning"); }
+        } 
+    },
     
-    toggleHistRow: function(idSafe, btn) { const row = document.getElementById(`nested-${idSafe}`); const isExpanding = !row.classList.contains('active'); document.querySelectorAll('.nested-hist-row').forEach(r => r.classList.remove('active')); document.querySelectorAll('.btn-toggle-hist').forEach(b => b.innerHTML = '<i class="fa-solid fa-eye"></i> View Details'); if(isExpanding) { row.classList.add('active'); if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details'; } },
+    toggleHistRow: function(idSafe, btn) {
+        const row = document.getElementById(`nested-${idSafe}`); const isExpanding = !row.classList.contains('active');
+        document.querySelectorAll('.nested-hist-row').forEach(r => r.classList.remove('active')); document.querySelectorAll('.btn-toggle-hist').forEach(b => b.innerHTML = '<i class="fa-solid fa-eye"></i> View Details');
+        if(isExpanding) { row.classList.add('active'); if(btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide Details'; }
+    },
 
     viewPayrollHistory: async function() {
         document.getElementById('payroll-active-view').style.display = 'none'; document.getElementById('payroll-history-view').style.display = 'block';
         const tbody = document.getElementById('payroll-history-content'); if(tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving archive...</td></tr>`;
-        const history = await this.request('get_payroll_history'); if(history.length === 0) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state-wrapper"><i class="fa-solid fa-folder-open"></i><p>No history found.</p></td></tr>`; return; }
+
+        const history = await this.request('get_payroll_history'); 
+        if(history.length === 0) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state-wrapper"><i class="fa-solid fa-folder-open"></i><p>No history found.</p></td></tr>`; return; }
+
         let groupedHistory = {};
-        history.forEach(h => { let workerName = h.name; if(!groupedHistory[workerName]) { groupedHistory[workerName] = { records: [], totalPayout: 0, cycles: new Set() }; } groupedHistory[workerName].records.push(h); groupedHistory[workerName].totalPayout += parseFloat(h.balance || h.net_pay || 0); groupedHistory[workerName].cycles.add(h.cycle_id); });
+        history.forEach(h => {
+            let workerName = h.name; 
+            if(!groupedHistory[workerName]) { groupedHistory[workerName] = { records: [], totalPayout: 0, cycles: new Set() }; }
+            groupedHistory[workerName].records.push(h); groupedHistory[workerName].totalPayout += parseFloat(h.balance || h.net_pay || 0); groupedHistory[workerName].cycles.add(h.cycle_id);
+        });
+
         tbody.innerHTML = '';
         Object.keys(groupedHistory).forEach((workerName, idx) => {
             let data = groupedHistory[workerName]; let safeId = 'hist-' + idx;
             tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);"><i class="fa-solid fa-folder" style="color:var(--primary); margin-right:8px;"></i> ${workerName}</b></td><td><span class="badge ongoing">${data.cycles.size} Cycle(s)</span></td><td style="font-weight: 800; color:var(--text-dark);">₱${data.totalPayout.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td style="text-align: center;"><button class="btn-outline btn-toggle-hist" id="btn-toggle-${safeId}" style="height: 26px; padding: 0 8px; font-size: 0.75rem;" onclick="app.toggleHistRow('${safeId}', this)"><i class="fa-solid fa-eye"></i> View Details</button></td></tr>`;
-            let nestedRows = ''; data.records.forEach(r => { nestedRows += `<tr><td><small style="color:var(--text-muted); font-weight:700;">${r.cycle_id}</small></td><td>${r.pay_date}</td><td>${r.job_description || '-'}</td><td style="font-weight:600; color:var(--text-dark);">₱${parseFloat(r.award_cost || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="color:var(--danger);">-₱${parseFloat(r.cash_advance || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="font-weight:800; color:var(--success);">₱${parseFloat(r.balance || r.net_pay || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td></tr>`; });
+            let nestedRows = '';
+            data.records.forEach(r => { nestedRows += `<tr><td><small style="color:var(--text-muted); font-weight:700;">${r.cycle_id}</small></td><td>${r.pay_date}</td><td>${r.job_description || '-'}</td><td style="font-weight:600; color:var(--text-dark);">₱${parseFloat(r.award_cost || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="color:var(--danger);">-₱${parseFloat(r.cash_advance || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td><td style="font-weight:800; color:var(--success);">₱${parseFloat(r.balance || r.net_pay || 0).toLocaleString('en-US', {minimumFractionDigits:2})}</td></tr>`; });
             tbody.innerHTML += `<tr class="nested-row nested-hist-row" id="nested-${safeId}"><td colspan="4" style="padding: 0;"><div class="nested-table-container"><h4 style="margin-bottom: 8px; font-size: 0.8rem; color: var(--text-muted); font-weight: 700;">Archive Breakdown for ${workerName}</h4><table class="nested-table nested-header-red"><thead><tr><th>CYCLE ID</th><th>DATE PAID</th><th>JOB DESCRIPTION</th><th>AWARD COST (₱)</th><th>ADVANCE (₱)</th><th>BALANCE / PAYOUT (₱)</th></tr></thead><tbody>${nestedRows}</tbody></table></div></td></tr>`;
         });
     },
@@ -665,19 +717,48 @@ const app = {
 
     // --- CASH RELEASE MODULE ---
     loadCashRelease: async function() {
-        const tbody = document.getElementById('cash-release-content'); if(!tbody) return; tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving ledger...</td></tr>`;
-        const data = await this.request('get_cash_releases'); let totalMat = 0; let totalLab = 0; let totalOth = 0; let grandTotal = 0; tbody.innerHTML = '';
-        if(!data || data.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="empty-state-wrapper"><p>No cash releases recorded yet.</p></td></tr>`; } 
-        else { data.forEach(r => { let amt = parseFloat(r.amount) || 0; grandTotal += amt; let badgeClass = ''; if(r.category === 'Material') { totalMat += amt; badgeClass = 'ongoing'; } else if(r.category === 'Labor') { totalLab += amt; badgeClass = 'success'; } else { totalOth += amt; badgeClass = 'pending'; } let catBadge = `<span class="badge ${badgeClass}">${r.category}</span>`; tbody.innerHTML += `<tr><td style="color:var(--text-muted);">${r.release_date}</td><td>${catBadge}</td><td><b style="color:var(--text-dark);">${r.name}</b></td><td>${r.description || '-'}</td><td style="font-weight:800; color:var(--danger);">-₱${amt.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td><button class="btn-danger" style="height:26px; padding:0 8px; border-radius:4px;" onclick="app.deleteCashRelease(${r.id})"><i class="fa-solid fa-trash"></i></button></td></tr>`; }); }
-        document.getElementById('cr-total-materials').innerText = `₱${totalMat.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('cr-total-labor').innerText = `₱${totalLab.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('cr-total-others').innerText = `₱${totalOth.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('cr-grand-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        const tbody = document.getElementById('cash-release-content'); if(!tbody) return;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving ledger...</td></tr>`;
+        
+        const data = await this.request('get_cash_releases');
+        let totalMat = 0; let totalLab = 0; let totalOth = 0; let grandTotal = 0;
+        
+        tbody.innerHTML = '';
+        if(!data || data.length === 0) { 
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-state-wrapper"><p>No cash releases recorded yet.</p></td></tr>`; 
+        } else {
+            data.forEach(r => {
+                let amt = parseFloat(r.amount) || 0; grandTotal += amt;
+                let badgeClass = '';
+                if(r.category === 'Material') { totalMat += amt; badgeClass = 'ongoing'; }
+                else if(r.category === 'Labor') { totalLab += amt; badgeClass = 'success'; }
+                else { totalOth += amt; badgeClass = 'pending'; } 
+                let catBadge = `<span class="badge ${badgeClass}">${r.category}</span>`;
+                tbody.innerHTML += `<tr><td style="color:var(--text-muted);">${r.release_date}</td><td>${catBadge}</td><td><b style="color:var(--text-dark);">${r.name}</b></td><td>${r.description || '-'}</td><td style="font-weight:800; color:var(--danger);">-₱${amt.toLocaleString('en-US', {minimumFractionDigits: 2})}</td><td><button class="btn-danger" style="height:26px; padding:0 8px; border-radius:4px;" onclick="app.deleteCashRelease(${r.id})"><i class="fa-solid fa-trash"></i></button></td></tr>`;
+            });
+        }
+
+        document.getElementById('cr-total-materials').innerText = `₱${totalMat.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-total-labor').innerText = `₱${totalLab.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-total-others').innerText = `₱${totalOth.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-grand-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
     },
-    addCashRelease: async function() { const date = document.getElementById('cr-date').value; const cat = document.getElementById('cr-category').value; const name = document.getElementById('cr-name').value; const desc = document.getElementById('cr-desc').value; let rawAmount = document.getElementById('cr-amount').value.replace(/,/g, ''); const amt = parseFloat(rawAmount || 0); if(!date || !cat || !name || !amt) { this.showToast("Date, Category, Name, and Amount are required!", "error"); return; } const res = await this.request('add_cash_release', { date: date, category: cat, name: name, desc: desc, amount: amt }); if(res.status === 'success') { document.getElementById('cr-date').value = ''; document.getElementById('cr-category').value = ''; document.getElementById('cr-name').value = ''; document.getElementById('cr-desc').value = ''; document.getElementById('cr-amount').value = ''; this.loadCashRelease(); this.loadDashboard(); this.showToast('Cash Release recorded.'); } else { this.showToast(res.message, 'error'); } },
-    deleteCashRelease: async function(id) { if(confirm("Delete this cash release record?")) { await this.request('delete_cash_release', { id: id }); this.loadCashRelease(); this.loadDashboard(); this.showToast('Record deleted.'); } },
+
+    addCashRelease: async function() {
+        const date = document.getElementById('cr-date').value; const cat = document.getElementById('cr-category').value; const name = document.getElementById('cr-name').value; const desc = document.getElementById('cr-desc').value; let rawAmount = document.getElementById('cr-amount').value.replace(/,/g, ''); const amt = parseFloat(rawAmount || 0);
+        if(!date || !cat || !name || !amt) { this.showToast("Date, Category, Name, and Amount are required!", "error"); return; }
+        const res = await this.request('add_cash_release', { date: date, category: cat, name: name, desc: desc, amount: amt });
+        if(res.status === 'success') { document.getElementById('cr-date').value = ''; document.getElementById('cr-category').value = ''; document.getElementById('cr-name').value = ''; document.getElementById('cr-desc').value = ''; document.getElementById('cr-amount').value = ''; this.loadCashRelease(); this.loadDashboard(); this.showToast('Cash Release recorded.'); } else { this.showToast(res.message, 'error'); }
+    },
+
+    deleteCashRelease: async function(id) {
+        if(confirm("Delete this cash release record?")) { await this.request('delete_cash_release', { id: id }); this.loadCashRelease(); this.loadDashboard(); this.showToast('Record deleted.'); }
+    },
 
     // --- NTP GLOBAL ---
     loadGlobalNTP: async function() {
         const proj = await this.request('get_projects'); const select = document.getElementById('g-ntp-project');
-        if (select) { select.innerHTML = '<option value="">Select Pending Project</option>'; proj.filter(p => (p.status || '').toLowerCase().trim() === 'pending').forEach(p => select.innerHTML += `<option value="${p.id}">${p.name} - ${p.location}</option>`); }
+        if (select) { select.innerHTML = '<option value="">Select Pending Project</option>'; if(Array.isArray(proj)){ proj.filter(p => (p.status || '').toLowerCase().trim() === 'pending').forEach(p => select.innerHTML += `<option value="${p.id}">${p.name} - ${p.location}</option>`); } }
         const ntps = await this.request('get_all_ntps'); const tbody = document.querySelector('#table-global-ntp tbody'); if(tbody) tbody.innerHTML = '';
         if(ntps) { ntps.forEach(n => { let fmtCost = n.award_cost ? '₱' + parseFloat(n.award_cost).toLocaleString('en-US') : 'N/A'; tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${n.project_name}</b></td><td>${n.ntp_ticket || 'N/A'}</td><td>${n.date_received}</td><td style="font-weight:700;">${fmtCost}</td><td><b style="color:var(--danger);">${n.due_date || 'N/A'}</b></td><td>${n.acceptance_date || 'N/A'}</td><td><span style="cursor:pointer; color:var(--primary-hover); text-decoration:underline;" onclick="app.viewAttachedFile('${n.file_path}')">View PDF</span></td></tr>`; }); }
     },

