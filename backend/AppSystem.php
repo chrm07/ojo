@@ -6,11 +6,28 @@ class ConstructionSystem {
         $this->pdo = $pdo; 
         
         try {
+            // AUTO-FIX: Create tables and missing columns if they don't exist
             $this->pdo->exec("CREATE TABLE IF NOT EXISTS skill_categories (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) UNIQUE)");
+            
             $colExists = $this->pdo->query("SHOW COLUMNS FROM manpower LIKE 'archived_date'")->rowCount();
-            if($colExists == 0) {
-                $this->pdo->exec("ALTER TABLE manpower ADD COLUMN archived_date DATETIME DEFAULT NULL");
-            }
+            if($colExists == 0) { $this->pdo->exec("ALTER TABLE manpower ADD COLUMN archived_date DATETIME DEFAULT NULL"); }
+            
+            // BULLETPROOF PROJECTS TABLE
+            $this->pdo->exec("CREATE TABLE IF NOT EXISTS projects (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                client_name VARCHAR(255),
+                location VARCHAR(255),
+                description TEXT,
+                foreman VARCHAR(255),
+                start_date DATE,
+                status VARCHAR(50) DEFAULT 'pending'
+            )");
+            $colCreated = $this->pdo->query("SHOW COLUMNS FROM projects LIKE 'created_at'")->rowCount();
+            if($colCreated == 0) { $this->pdo->exec("ALTER TABLE projects ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"); }
+
+            // AUTO-FIX: Create award_costs table kung wala pa!
+            $this->pdo->exec("CREATE TABLE IF NOT EXISTS award_costs (id INT AUTO_INCREMENT PRIMARY KEY, scope_of_work VARCHAR(255) NOT NULL, amount DECIMAL(15,2) NOT NULL DEFAULT 0.00)");
         } catch(Exception $e) {}
     }
 
@@ -29,9 +46,9 @@ class ConstructionSystem {
     public function getDashboardStats() {
         $stats = ['projects' => 0, 'users' => 0, 'total_cash_release' => 0, 'total_payroll_advance' => 0];
 
-        // FIX: Binalot sa try-catch para hindi mag-crash at gumamit ng LIKE para masalo kahit anong case formatting
+        // FIX: Ginawa kong LOWER() and TRIM() sa database level para walang ligtas na ongoing projects!
         try { 
-            $stmt = $this->pdo->query("SELECT COUNT(*) FROM projects WHERE status LIKE '%ongoing%' OR status LIKE '%Ongoing%'");
+            $stmt = $this->pdo->query("SELECT COUNT(*) FROM projects WHERE LOWER(TRIM(status)) IN ('ongoing', 'pending')");
             if ($stmt) $stats['projects'] = $stmt->fetchColumn() ?: 0; 
         } catch (Exception $e) {}
 
@@ -64,16 +81,13 @@ class ConstructionSystem {
     }
 
     public function addProject($name, $client, $location, $desc, $foreman, $start_date) {
-        $stmt = $this->pdo->prepare("INSERT INTO projects (name, client_name, location, description, foreman, start_date, status) VALUES (?, ?, ?, ?, ?, ?, 'ongoing')"); // Set as ongoing directly if no NTP module is present or required. Adjust if necessary.
+        $stmt = $this->pdo->prepare("INSERT INTO projects (name, client_name, location, description, foreman, start_date, status) VALUES (?, ?, ?, ?, ?, ?, 'ongoing')");
         $stmt->execute([$name, $client, $location, $desc, $foreman, $start_date]);
         $projectId = $this->pdo->lastInsertId();
         
-        // Ensure project_costs table exists before trying to insert.
         try {
             $this->pdo->prepare("INSERT INTO project_costs (project_id) VALUES (?)")->execute([$projectId]);
-        } catch (PDOException $e) {
-           // Ignore if table doesn't exist for now, or handle appropriately.
-        }
+        } catch (PDOException $e) {}
 
         $this->generateDefaultChecklist($projectId);
         return ['status' => 'success'];
@@ -84,7 +98,6 @@ class ConstructionSystem {
             return $this->pdo->query("SELECT * FROM projects ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC); 
         } catch (Exception $e) {
             try {
-                // Fallback if created_at is missing.
                 return $this->pdo->query("SELECT * FROM projects ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
             } catch (Exception $e2) {
                 return [];
@@ -120,7 +133,6 @@ class ConstructionSystem {
     public function assignWorker($project_id, $category, $worker) { $this->pdo->prepare("UPDATE project_accomplishments SET assigned_worker = ? WHERE project_id = ? AND category = ?")->execute([$worker, $project_id, $category]); return ['status' => 'success']; }
     public function removeWorkerAssignment($project_id, $category) { $this->pdo->prepare("UPDATE project_accomplishments SET assigned_worker = NULL WHERE project_id = ? AND category = ?")->execute([$project_id, $category]); return ['status' => 'success']; }
 
-    // --- INVENTORY & SUPPLIERS ---
     public function getSuppliers() { return $this->pdo->query("SELECT * FROM suppliers ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC); }
     public function addSupplier($name, $materials, $contact, $email) { $this->pdo->prepare("INSERT INTO suppliers (name, materials, contact, email, status) VALUES (?, ?, ?, ?, 'Active')")->execute([$name, $materials, $contact, $email]); return ['status' => 'success']; }
     public function getInventoryCategories() { return $this->pdo->query("SELECT name FROM inventory_categories ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN); }
@@ -139,18 +151,9 @@ class ConstructionSystem {
         } catch(Exception $e) { $this->pdo->rollBack(); return ['status' => 'error', 'message' => 'DB Error: ' . $e->getMessage()]; }
     }
 
-    // --- MANPOWER FOLDERS & RECORDS ---
     public function addSkillCategory($name) { $this->pdo->prepare("INSERT IGNORE INTO skill_categories (name) VALUES (?)")->execute([trim($name)]); return ['status' => 'success']; }
-    public function editSkillCategory($old_name, $new_name) { 
-        $this->pdo->prepare("UPDATE skill_categories SET name = ? WHERE name = ?")->execute([trim($new_name), trim($old_name)]); 
-        $this->pdo->prepare("UPDATE manpower SET skills = ? WHERE skills = ?")->execute([trim($new_name), trim($old_name)]); 
-        return ['status' => 'success']; 
-    }
-    public function deleteSkillCategory($name) { 
-        $this->pdo->prepare("DELETE FROM skill_categories WHERE name = ?")->execute([trim($name)]); 
-        $this->pdo->prepare("DELETE FROM manpower WHERE skills = ?")->execute([trim($name)]); 
-        return ['status' => 'success']; 
-    }
+    public function editSkillCategory($old_name, $new_name) { $this->pdo->prepare("UPDATE skill_categories SET name = ? WHERE name = ?")->execute([trim($new_name), trim($old_name)]); $this->pdo->prepare("UPDATE manpower SET skills = ? WHERE skills = ?")->execute([trim($new_name), trim($old_name)]); return ['status' => 'success']; }
+    public function deleteSkillCategory($name) { $this->pdo->prepare("DELETE FROM skill_categories WHERE name = ?")->execute([trim($name)]); $this->pdo->prepare("DELETE FROM manpower WHERE skills = ?")->execute([trim($name)]); return ['status' => 'success']; }
     public function archiveManpower($id) { $this->pdo->prepare("UPDATE manpower SET is_archived = 1, archived_date = NOW() WHERE id = ?")->execute([$id]); return ['status' => 'success']; }
     public function restoreManpower($id) { $this->pdo->prepare("UPDATE manpower SET is_archived = 0, archived_date = NULL WHERE id = ?")->execute([$id]); return ['status' => 'success']; }
     
@@ -191,53 +194,31 @@ class ConstructionSystem {
         return ['status' => 'success'];
     }
 
-    public function getAwardCosts() { return $this->pdo->query("SELECT * FROM award_costs ORDER BY scope_of_work ASC")->fetchAll(PDO::FETCH_ASSOC); }
+    public function getAwardCosts() { try { return $this->pdo->query("SELECT * FROM award_costs ORDER BY scope_of_work ASC")->fetchAll(PDO::FETCH_ASSOC); } catch (Exception $e) { return []; } }
     public function addAwardCost($desc, $amount) { $this->pdo->prepare("INSERT INTO award_costs (scope_of_work, amount) VALUES (?, ?)")->execute([$desc, $amount]); return ['status' => 'success']; }
     public function deleteAwardCost($id) { $this->pdo->prepare("DELETE FROM award_costs WHERE id = ?")->execute([$id]); return ['status' => 'success']; }
 
-    // --- PAYROLL ENHANCED ---
-    public function getAllCompletedTasks() { 
-        try { return $this->pdo->query("SELECT a.*, p.name as project_name, p.location as project_location FROM project_accomplishments a JOIN projects p ON a.project_id = p.id WHERE a.status = 'Completed' AND a.assigned_worker IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC); } 
-        catch (PDOException $e) { return []; } 
-    }
-    
-    public function getPayroll() { 
-        try { return $this->pdo->query("SELECT p.*, m.name FROM payroll p JOIN manpower m ON p.manpower_id = m.id")->fetchAll(PDO::FETCH_ASSOC); } 
-        catch (PDOException $e) { return []; } 
-    }
-    
+    public function getAllCompletedTasks() { try { return $this->pdo->query("SELECT a.*, p.name as project_name, p.location as project_location FROM project_accomplishments a JOIN projects p ON a.project_id = p.id WHERE a.status = 'Completed' AND a.assigned_worker IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) { return []; } }
+    public function getPayroll() { try { return $this->pdo->query("SELECT p.*, m.name FROM payroll p JOIN manpower m ON p.manpower_id = m.id")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) { return []; } }
     public function addPayroll($date, $name, $job, $award_cost, $cash_advance) {
         try {
-            $stmt = $this->pdo->prepare("SELECT id FROM manpower WHERE name = ? LIMIT 1"); 
-            $stmt->execute([$name]); 
-            $worker = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if(!$worker) {
-                $this->pdo->prepare("INSERT INTO manpower (name, position, skills, rate) VALUES (?, 'Worker', 'Uncategorized', 500)")->execute([$name]);
-                $manpower_id = $this->pdo->lastInsertId();
-            } else { $manpower_id = $worker['id']; }
-
+            $stmt = $this->pdo->prepare("SELECT id FROM manpower WHERE name = ? LIMIT 1"); $stmt->execute([$name]); $worker = $stmt->fetch(PDO::FETCH_ASSOC);
+            if(!$worker) { $this->pdo->prepare("INSERT INTO manpower (name, position, skills, rate) VALUES (?, 'Worker', 'Uncategorized', 500)")->execute([$name]); $manpower_id = $this->pdo->lastInsertId(); } else { $manpower_id = $worker['id']; }
             $this->pdo->prepare("INSERT INTO payroll (manpower_id, pay_date, job_description, rate, days_worked, gross_pay, deductions, net_pay, award_cost, cash_advance, overall_advance, balance) VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?, ?, 0, 0)")->execute([$manpower_id, $date, $job, $award_cost, $cash_advance]);
-            
             return ['status' => 'success'];
         } catch (PDOException $e) { return ['status' => 'error', 'message' => 'SQL Error: ' . $e->getMessage()]; }
     }
-
     public function deletePayrollEntry($id) { try { $this->pdo->prepare("DELETE FROM payroll WHERE id = ?")->execute([$id]); return ['status' => 'success']; } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; } }
     public function editPayrollEntry($id, $award, $advance) { try { $this->pdo->prepare("UPDATE payroll SET award_cost = ?, cash_advance = ? WHERE id = ?")->execute([$award, $advance, $id]); return ['status' => 'success']; } catch (PDOException $e) { return ['status' => 'error', 'message' => $e->getMessage()]; } }
     
     public function archiveAndResetPayroll() {
-        $cycle = 'CYCLE-' . date('Ymd-His'); 
-        $payroll = $this->getPayroll();
-        $balances = [];
+        $cycle = 'CYCLE-' . date('Ymd-His'); $payroll = $this->getPayroll(); $balances = [];
         foreach($payroll as $p) { $key = $p['manpower_id'] . '_' . $p['job_description']; if(!isset($balances[$key])) $balances[$key] = 0; $balances[$key] += ($p['award_cost'] - $p['cash_advance']); }
         $stmt = $this->pdo->prepare("INSERT INTO payroll_history (cycle_id, manpower_id, pay_date, job_description, rate, net_pay, award_cost, cash_advance, overall_advance, balance) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)");
-        $deleteStmt = $this->pdo->prepare("DELETE FROM payroll WHERE id = ?");
-        $archivedCount = 0;
+        $deleteStmt = $this->pdo->prepare("DELETE FROM payroll WHERE id = ?"); $archivedCount = 0;
         foreach($payroll as $p) { $key = $p['manpower_id'] . '_' . $p['job_description']; if($balances[$key] <= 0) { $stmt->execute([$cycle, $p['manpower_id'], $p['pay_date'], $p['job_description'], $p['award_cost'], $p['cash_advance'], $p['overall_advance'], $p['balance']]); $deleteStmt->execute([$p['id']]); $archivedCount++; } }
         return ['status' => 'success', 'archived' => $archivedCount];
     }
-    
     public function getPayrollHistory() { $this->pdo->query("DELETE FROM payroll_history WHERE pay_date < DATE_SUB(CURDATE(), INTERVAL 1 YEAR)"); return $this->pdo->query("SELECT h.*, m.name FROM payroll_history h JOIN manpower m ON h.manpower_id = m.id ORDER BY h.pay_date DESC, h.id DESC")->fetchAll(PDO::FETCH_ASSOC); }
 
     public function getCashReleases() { try { return $this->pdo->query("SELECT * FROM cash_releases ORDER BY release_date DESC, id DESC")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) { return []; } }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>J.I.OJO Construction Services</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/style.css?v=<?php echo time(); ?>">
@@ -33,10 +33,14 @@
     </div>
 
     <div id="app-layout">
+        
+        <div id="sidebar-overlay" onclick="app.toggleSidebar()"></div>
+
         <aside class="sidebar">
             <div class="sidebar-header">
                 <h2><i class="fa-solid fa-helmet-safety"></i> J.I.OJO</h2>
                 <span>Management System</span>
+                <button class="mobile-close-btn" onclick="app.toggleSidebar()"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <ul class="nav-links">
                 <li onclick="app.showModule('dashboard')" data-module="dashboard" class="active"><i class="fa-solid fa-chart-pie"></i> Dashboard</li>
@@ -53,6 +57,8 @@
 
         <main class="main-content">
             <header class="header">
+                <button class="mobile-menu-btn" onclick="app.toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+                
                 <div class="breadcrumbs" id="dynamic-breadcrumbs">
                     <span class="breadcrumb-link" onclick="app.showModule('dashboard')"><i class="fa-solid fa-house"></i> Home</span>
                     <i class="fa-solid fa-chevron-right separator"></i>
@@ -75,6 +81,8 @@
                 <div class="quick-stats-grid">
                     <div class="stat-card" onclick="app.showModule('projects')"><div class="stat-details"><h3>Ongoing Projects</h3><h2 id="stat-projects">0</h2><span class="badge ongoing">Active Sites</span></div><div class="stat-icon"><i class="fa-solid fa-building"></i></div></div>
                     <div class="stat-card" onclick="app.showModule('users')"><div class="stat-details"><h3>Active Manpower</h3><h2 id="stat-users">0</h2><span class="badge success">Deployed</span></div><div class="stat-icon" style="background:var(--success-bg); color:var(--success);"><i class="fa-solid fa-users"></i></div></div>
+                    <div class="stat-card" onclick="app.showModule('cash_release')"><div class="stat-details"><h3>Total Cash Released</h3><h2 id="stat-cash-release">₱0.00</h2><span class="badge pending">Ledger</span></div><div class="stat-icon" style="background:var(--danger-bg); color:var(--danger);"><i class="fa-solid fa-hand-holding-dollar"></i></div></div>
+                    <div class="stat-card" onclick="app.showModule('payroll')"><div class="stat-details"><h3>Total Cash Advance</h3><h2 id="stat-payroll-advance">₱0.00</h2><span class="badge pending">Payroll</span></div><div class="stat-icon" style="background:var(--warning-bg); color:var(--warning);"><i class="fa-solid fa-money-check-dollar"></i></div></div>
                 </div>
                 <div id="upcoming-deadlines-container" class="card">
                     <div class="card-header"><h3><i class="fa-solid fa-calendar-days" style="color: var(--text-dark);"></i> Upcoming Deadlines</h3><p>Automatically sorts tasks prioritizing urgent deadlines within the next 30 days.</p></div>

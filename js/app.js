@@ -34,7 +34,6 @@ const app = {
 
     checkSession: async function() { const res = await this.request('check_session'); if (res.logged_in) { document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-layout').style.display = 'flex'; this.showModule('dashboard'); } },
     
-    // AUTHENTICATION LOGIC
     handleAuth: async function() {
         const emailInput = document.getElementById('auth-email');
         const passInput = document.getElementById('auth-pass');
@@ -57,6 +56,26 @@ const app = {
         const passInput = document.getElementById('auth-pass'); const eyeIcon = document.getElementById('toggle-password');
         if(passInput.type === 'password') { passInput.type = 'text'; eyeIcon.classList.remove('fa-eye'); eyeIcon.classList.add('fa-eye-slash'); } 
         else { passInput.type = 'password'; eyeIcon.classList.remove('fa-eye-slash'); eyeIcon.classList.add('fa-eye'); }
+    },
+
+    // --- FIX: BINALIK ANG MISSING TOGGLE SIDEBAR FUNCTION PARA SA HAMBURGER MENU ---
+    toggleSidebar: function() {
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if(sidebar.classList.contains('active')) {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        } else {
+            sidebar.classList.add('active');
+            overlay.classList.add('active');
+        }
+    },
+    
+    closeSidebarMobile: function() {
+        if(window.innerWidth <= 900) {
+            document.querySelector('.sidebar').classList.remove('active');
+            document.getElementById('sidebar-overlay').classList.remove('active');
+        }
     },
 
     showToast: function(message, type = 'success') {
@@ -109,22 +128,16 @@ const app = {
         if(id === 'global_ntp') this.loadGlobalNTP();
 
         this.clearGlobalSearch();
+        this.closeSidebarMobile();
     },
 
+    // FIX: Dashboard numbers now sync exactly with the backend count.
     loadDashboard: async function() {
         const stats = await this.request('get_stats');
-        
         const projects = await this.request('get_projects');
         window.allProjectsData = projects;
         
-        let ongoingCount = 0;
-        if (projects && Array.isArray(projects)) {
-            ongoingCount = projects.filter(p => (p.status || '').toLowerCase().trim() === 'ongoing' || (p.status || '').toLowerCase().trim() === 'pending').length;
-        } else {
-            ongoingCount = stats.projects || 0;
-        }
-
-        document.getElementById('stat-projects').innerText = ongoingCount;
+        document.getElementById('stat-projects').innerText = stats.projects || 0;
         document.getElementById('stat-users').innerText = stats.users || 0;
         document.getElementById('stat-cash-release').innerText = '₱' + parseFloat(stats.total_cash_release || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
         document.getElementById('stat-payroll-advance').innerText = '₱' + parseFloat(stats.total_payroll_advance || 0).toLocaleString('en-US', {minimumFractionDigits: 2});
@@ -184,8 +197,7 @@ const app = {
         if (!query || query.trim() === '') { 
             searchContainer.style.display = 'none'; clearBtn.style.display = 'none'; 
             if(deadlinesContainer) deadlinesContainer.style.display = 'block'; 
-            clearTimeout(this.searchTimeout);
-            return; 
+            clearTimeout(this.searchTimeout); return; 
         }
 
         clearBtn.style.display = 'block'; searchContainer.style.display = 'block'; 
@@ -203,8 +215,7 @@ const app = {
                 if(fetchedData) { window.globalSearchData = { ...fetchedData, timestamp: Date.now() }; }
             }
             const db = window.globalSearchData || { projects:[], users:[], suppliers:[], inventory:[], award_costs:[], cash_releases:[] };
-            const q = query.toLowerCase();
-            let resultsHTML = '';
+            const q = query.toLowerCase(); let resultsHTML = '';
             
             const matchedProjs = (db.projects || []).filter(p => p.name.toLowerCase().includes(q) || p.location.toLowerCase().includes(q));
             const matchedUsers = (db.users || []).filter(u => u.name.toLowerCase().includes(q) || (u.position && u.position.toLowerCase().includes(q)));
@@ -215,13 +226,14 @@ const app = {
 
             matchedProjs.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('projects'); app.openProjectDetails(${item.id}, '${item.name.replace(/'/g, "\\'")}', '${item.location.replace(/'/g, "\\'")}')"><div class="search-icon-box"><i class="fa-solid fa-city"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.location} | Foreman: ${item.foreman || 'N/A'}</p><span class="search-category-badge">Projects</span></div></div>`; });
             matchedUsers.forEach(item => { 
-                let safeName = (item.name||'').replace(/'/g, "\\'");
-                let safeId = (item.name||'').replace(/[^a-zA-Z0-9]/g, '-');
-                
+                let safeName = (item.name||'').replace(/'/g, "\\'"); let safeId = (item.name||'').replace(/[^a-zA-Z0-9]/g, '-');
                 resultsHTML += `<div class="search-result-item" onclick="app.showModule('users'); setTimeout(()=>app.openSkillFolder('${item.skills || 'Uncategorized'}'), 200)"><div class="search-icon-box" style="color:var(--success);"><i class="fa-solid fa-user-helmet"></i></div><div class="search-content"><h4>${item.name}</h4><p>${item.position || 'Worker'} | ${item.skills || 'N/A'}</p><span class="search-category-badge" style="color:var(--success);">Record List</span></div></div>`; 
-                
                 resultsHTML += `<div class="search-result-item" onclick="app.showModule('payroll'); setTimeout(() => { document.getElementById('pay-name').value = '${safeName}'; const r = document.getElementById('nested-${safeId}'); if(r){ r.classList.add('active'); r.scrollIntoView({behavior: 'smooth', block: 'center'}); } }, 300);"><div class="search-icon-box" style="color:var(--warning);"><i class="fa-solid fa-file-invoice-dollar"></i></div><div class="search-content"><h4>${item.name}</h4><p>Log Cash Advance / Compute Balance</p><span class="search-category-badge" style="color:var(--warning);">Payroll</span></div></div>`; 
             });
+            matchedSuppliers.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('materials'); app.switchMatTab('suppliers');"><div class="search-icon-box" style="color:#10B981;"><i class="fa-solid fa-truck-field"></i></div><div class="search-content"><h4>${item.name}</h4><p>Provides: ${item.materials}</p><span class="search-category-badge" style="color:#10B981;">Supplier</span></div></div>`; });
+            matchedInventory.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('materials'); app.switchMatTab('inventory');"><div class="search-icon-box" style="color:#3B82F6;"><i class="fa-solid fa-boxes-stacked"></i></div><div class="search-content"><h4>${item.name}</h4><p>Stock: ${item.stock} ${item.unit} | Category: ${item.category}</p><span class="search-category-badge" style="color:#3B82F6;">Inventory</span></div></div>`; });
+            matchedAwards.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('award_costs');"><div class="search-icon-box" style="color:#8B5CF6;"><i class="fa-solid fa-clipboard-list"></i></div><div class="search-content"><h4>${item.scope_of_work}</h4><p>Amount: ₱${parseFloat(item.amount).toLocaleString('en-US')}</p><span class="search-category-badge" style="color:#8B5CF6;">Award Cost</span></div></div>`; });
+            matchedCash.forEach(item => { resultsHTML += `<div class="search-result-item" onclick="app.showModule('cash_release');"><div class="search-icon-box" style="color:#EF4444;"><i class="fa-solid fa-hand-holding-dollar"></i></div><div class="search-content"><h4>${item.name} - ${item.category}</h4><p>${item.description || 'No Description'} | Amount: ₱${parseFloat(item.amount).toLocaleString('en-US')}</p><span class="search-category-badge" style="color:#EF4444;">Cash Release</span></div></div>`; });
 
             if(resultsHTML === '') { resultsHTML = `<p style="padding: 10px; color: var(--text-muted);">No results found.</p>`; }
             content.innerHTML = resultsHTML;
@@ -293,20 +305,8 @@ const app = {
         });
     },
 
-    updateProjectStatus: async function(id, status) { 
-        await this.request('update_project_status', { id, status }); 
-        
-        await this.loadProjects(); 
-        this.loadDashboard(); 
-    },
-    
-    deleteProject: async function(id) { 
-        if(confirm("DANGER ZONE! Deleting this project will wipe all tracking data. Are you sure?")) { 
-            await this.request('delete_project', { id }); 
-            await this.loadProjects(); 
-            this.loadDashboard(); 
-        } 
-    },
+    updateProjectStatus: async function(id, status) { await this.request('update_project_status', { id, status }); await this.loadProjects(); this.loadDashboard(); },
+    deleteProject: async function(id) { if(confirm("DANGER ZONE! Deleting this project will wipe all tracking data. Are you sure?")) { await this.request('delete_project', { id }); await this.loadProjects(); this.loadDashboard(); } },
 
     openProjectDetails: function(id, name, location) {
         this.currentProjectId = id;
@@ -376,8 +376,7 @@ const app = {
         const catSelect = document.getElementById('assign-category'); catSelect.innerHTML = '<option value="">Select Category/Phase</option>';
         const tbody = document.getElementById('assignments-content'); tbody.innerHTML = '';
         if(!data.checklist || data.checklist.length === 0) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state-wrapper"><p>No categories found in checklist.</p></td></tr>`; return; }
-        let grouped = {};
-        data.checklist.forEach(item => { const cat = item.category || 'Uncategorized'; if(!grouped[cat]) grouped[cat] = { assigned: item.assigned_worker }; if(item.assigned_worker) grouped[cat].assigned = item.assigned_worker; });
+        let grouped = {}; data.checklist.forEach(item => { const cat = item.category || 'Uncategorized'; if(!grouped[cat]) grouped[cat] = { assigned: item.assigned_worker }; if(item.assigned_worker) grouped[cat].assigned = item.assigned_worker; });
         let hasAssignments = false;
         Object.keys(grouped).forEach(cat => { catSelect.innerHTML += `<option value="${cat}">${cat}</option>`; if(grouped[cat].assigned) { hasAssignments = true; tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${cat}</b></td><td><span class="badge-assigned" style="margin:0;"><i class="fa-solid fa-user-check"></i> ${grouped[cat].assigned}</span></td><td><button class="btn-danger" style="height: 26px; padding: 0 8px; border-radius: 4px;" onclick="app.removeWorkerAssignment('${cat}')"><i class="fa-solid fa-trash"></i></button></td></tr>`; } });
         if(!hasAssignments) tbody.innerHTML = `<tr><td colspan="3" class="empty-state-wrapper"><p>No workers assigned to specific tasks yet.</p></td></tr>`;
@@ -409,48 +408,29 @@ const app = {
     // ==========================================
     // MODULE: MATERIAL SUPPLIERS & INVENTORY (DB)
     // ==========================================
-    switchMatTab: function(tabId) {
-        document.getElementById('tab-mat-suppliers').classList.remove('active'); document.getElementById('tab-mat-inventory').classList.remove('active');
-        document.getElementById('tab-mat-' + tabId).classList.add('active');
-        document.getElementById('mtab-suppliers').classList.remove('active'); document.getElementById('mtab-inventory').classList.remove('active');
-        document.getElementById('mtab-' + tabId).classList.add('active');
-    },
-
+    switchMatTab: function(tabId) { document.getElementById('tab-mat-suppliers').classList.remove('active'); document.getElementById('tab-mat-inventory').classList.remove('active'); document.getElementById('tab-mat-' + tabId).classList.add('active'); document.getElementById('mtab-suppliers').classList.remove('active'); document.getElementById('mtab-inventory').classList.remove('active'); document.getElementById('mtab-' + tabId).classList.add('active'); },
     loadSuppliersDashboard: async function() { this.renderSuppliersTable(); this.renderInventoryTable(); },
-
     renderSuppliersTable: async function() {
         const suppliers = await this.request('get_suppliers'); const tbody = document.getElementById('suppliers-content'); if (!tbody) return; tbody.innerHTML = '';
         if (suppliers.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state-wrapper"><i class="fa-solid fa-truck-field"></i><p>No suppliers available.</p></td></tr>`; }
-        suppliers.forEach(s => {
-            let statusBadge = s.status === 'Active' ? `<span class="badge completed">Active</span>` : `<span class="badge" style="background:#E5E7EB; color:#6B7280; border: 1px solid #D1D5DB;">Inactive</span>`;
-            tbody.innerHTML += `<tr><td><b style="color:var(--text-dark); font-size:0.9rem;">${s.name}</b></td><td style="color:var(--text-main); font-weight:600;">${s.materials}</td><td style="color:var(--text-muted);"><i class="fa-solid fa-phone" style="margin-right:4px;"></i> ${s.contact}</td><td style="color:var(--text-muted);"><i class="fa-solid fa-envelope" style="margin-right:4px;"></i> ${s.email || 'N/A'}</td><td>${statusBadge}</td></tr>`;
-        });
+        suppliers.forEach(s => { let statusBadge = s.status === 'Active' ? `<span class="badge completed">Active</span>` : `<span class="badge" style="background:#E5E7EB; color:#6B7280; border: 1px solid #D1D5DB;">Inactive</span>`; tbody.innerHTML += `<tr><td><b style="color:var(--text-dark); font-size:0.9rem;">${s.name}</b></td><td style="color:var(--text-main); font-weight:600;">${s.materials}</td><td style="color:var(--text-muted);"><i class="fa-solid fa-phone" style="margin-right:4px;"></i> ${s.contact}</td><td style="color:var(--text-muted);"><i class="fa-solid fa-envelope" style="margin-right:4px;"></i> ${s.email || 'N/A'}</td><td>${statusBadge}</td></tr>`; });
         document.getElementById('stat-active-suppliers').innerText = suppliers.filter(s => s.status === 'Active').length;
     },
-
     renderInventoryTable: async function() {
         const inventory = await this.request('get_inventory'); const suppliers = await this.request('get_suppliers'); const tbody = document.getElementById('inventory-content'); if (!tbody) return; tbody.innerHTML = ''; let lowStockCount = 0;
         if (inventory.length === 0) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state-wrapper"><i class="fa-solid fa-box-open"></i><p>No inventory items available.</p></td></tr>`; }
-        inventory.forEach(inv => {
-            let stockStyle = "color: var(--text-dark);"; if (inv.stock <= 5) { stockStyle = "color: var(--danger); font-weight: 800;"; lowStockCount++; }
-            let supMatch = suppliers.find(s => s.name === inv.supplier); let supplierUI = supMatch ? `<b>${supMatch.name}</b><br><small style="color:var(--text-muted);">${supMatch.contact}</small>` : `<b style="color:var(--text-muted);">Unassigned</b>`;
-            let fmtCost = parseFloat(inv.unit_cost).toLocaleString('en-US', {minimumFractionDigits: 2});
-            tbody.innerHTML += `<tr><td><b style="color:var(--text-dark); font-size:0.9rem;">${inv.name}</b><br><small style="color:var(--text-muted);">${inv.unit}</small></td><td style="color:var(--text-muted); font-weight:600;">${inv.category}</td><td><span style="${stockStyle} font-size:1rem;">${inv.stock}</span></td><td style="color:var(--success); font-weight:700;">₱${fmtCost}</td><td>${supplierUI}</td></tr>`;
-        });
+        inventory.forEach(inv => { let stockStyle = "color: var(--text-dark);"; if (inv.stock <= 5) { stockStyle = "color: var(--danger); font-weight: 800;"; lowStockCount++; } let supMatch = suppliers.find(s => s.name === inv.supplier); let supplierUI = supMatch ? `<b>${supMatch.name}</b><br><small style="color:var(--text-muted);">${supMatch.contact}</small>` : `<b style="color:var(--text-muted);">Unassigned</b>`; let fmtCost = parseFloat(inv.unit_cost).toLocaleString('en-US', {minimumFractionDigits: 2}); tbody.innerHTML += `<tr><td><b style="color:var(--text-dark); font-size:0.9rem;">${inv.name}</b><br><small style="color:var(--text-muted);">${inv.unit}</small></td><td style="color:var(--text-muted); font-weight:600;">${inv.category}</td><td><span style="${stockStyle} font-size:1rem;">${inv.stock}</span></td><td style="color:var(--success); font-weight:700;">₱${fmtCost}</td><td>${supplierUI}</td></tr>`; });
         document.getElementById('stat-low-stock').innerText = `${lowStockCount} Items`;
     },
-
     populateInventorySupplierDropdown: async function() { const suppliers = await this.request('get_suppliers'); const select = document.getElementById('stock-supplier'); if(!select) return; select.innerHTML = '<option value="">Select Supplier</option>'; suppliers.filter(s => s.status === 'Active').forEach(sup => { select.innerHTML += `<option value="${sup.name}">${sup.name}</option>`; }); },
     populateCategoryDropdown: async function() { const categories = await this.request('get_inventory_categories'); const select = document.getElementById('stock-category'); if(!select) return; select.innerHTML = '<option value="">Select Category</option>'; categories.forEach(cat => { select.innerHTML += `<option value="${cat}">${cat}</option>`; }); select.innerHTML += `<option value="ADD_NEW" style="font-weight: 800; color: var(--primary-hover);">+ Add New Category</option>`; },
     handleCategoryChange: function(val) { const newCatInput = document.getElementById('stock-category-new'); if(!newCatInput) return; if(val === 'ADD_NEW') { newCatInput.style.display = 'block'; newCatInput.focus(); } else { newCatInput.style.display = 'none'; newCatInput.value = ''; } },
-
     submitNewSupplier: async function() {
         const name = document.getElementById('new-sup-name').value; const mats = document.getElementById('new-sup-materials').value; const contact = document.getElementById('new-sup-contact').value; const email = document.getElementById('new-sup-email').value;
         if (!name || !mats || !contact) { this.showToast('Name, Materials, and Contact are required!', 'error'); return; }
         await this.request('add_supplier', { name, materials: mats, contact, email });
         document.getElementById('new-sup-name').value = ''; document.getElementById('new-sup-materials').value = ''; document.getElementById('new-sup-contact').value = ''; document.getElementById('new-sup-email').value = ''; this.closeModal('modal-add-supplier'); this.renderSuppliersTable(); this.showToast('New supplier successfully added.');
     },
-
     submitNewStock: async function() {
         const name = document.getElementById('stock-name').value; let cat = document.getElementById('stock-category').value; const qty = document.getElementById('stock-qty').value; const unit = document.getElementById('stock-unit').value; const cost = document.getElementById('stock-cost').value; const supplier = document.getElementById('stock-supplier').value;
         if (cat === 'ADD_NEW') { cat = document.getElementById('stock-category-new').value.trim(); if (cat) await this.request('add_inventory_category', { name: cat }); }
@@ -463,6 +443,7 @@ const app = {
     // MODULE: MANPOWER (RECORD LIST) 
     // ==========================================
     
+    // FIX: Populates all projects properly now
     loadProjectOptionsForManpower: async function() { 
         try {
             const proj = await this.request('get_projects'); 
@@ -597,7 +578,7 @@ const app = {
         document.getElementById('awd-desc').value = ''; document.getElementById('awd-amount').value = ''; this.loadAwardCosts(); this.showToast('Award Cost added.');
     },
     loadAwardCosts: async function() {
-        const data = await this.request('get_award_costs'); const tbody = document.querySelector('#table-award-costs tbody'); if(tbody) { tbody.innerHTML = ''; if(data) { data.forEach(d => { let fmtAmt = parseFloat(d.amount).toLocaleString('en-US', {minimumFractionDigits: 2}); tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${d.scope_of_work}</b></td><td style="font-weight:700; color:var(--text-dark);">₱${fmtAmt}</td><td><button class="btn-danger" style="height:26px; padding:0 8px; border-radius:4px;" onclick="app.deleteAwardCost(${d.id})"><i class="fa-solid fa-trash"></i></button></td></tr>`; }); } }
+        const data = await this.request('get_award_costs'); const tbody = document.querySelector('#table-award-costs tbody'); if(tbody) { tbody.innerHTML = ''; if(data && Array.isArray(data)) { data.forEach(d => { let fmtAmt = parseFloat(d.amount).toLocaleString('en-US', {minimumFractionDigits: 2}); tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${d.scope_of_work}</b></td><td style="font-weight:700; color:var(--text-dark);">₱${fmtAmt}</td><td><button class="btn-danger" style="height:26px; padding:0 8px; border-radius:4px;" onclick="app.deleteAwardCost(${d.id})"><i class="fa-solid fa-trash"></i></button></td></tr>`; }); } }
     },
     deleteAwardCost: async function(id) { if(confirm("Delete this Job Description?")) { await this.request('delete_award_cost', { id }); this.loadAwardCosts(); } },
 
@@ -738,10 +719,7 @@ const app = {
             });
         }
 
-        document.getElementById('cr-total-materials').innerText = `₱${totalMat.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('cr-total-labor').innerText = `₱${totalLab.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('cr-total-others').innerText = `₱${totalOth.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-        document.getElementById('cr-grand-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('cr-total-materials').innerText = `₱${totalMat.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('cr-total-labor').innerText = `₱${totalLab.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('cr-total-others').innerText = `₱${totalOth.toLocaleString('en-US', {minimumFractionDigits: 2})}`; document.getElementById('cr-grand-total').innerText = `₱${grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
     },
 
     addCashRelease: async function() {
@@ -751,9 +729,7 @@ const app = {
         if(res.status === 'success') { document.getElementById('cr-date').value = ''; document.getElementById('cr-category').value = ''; document.getElementById('cr-name').value = ''; document.getElementById('cr-desc').value = ''; document.getElementById('cr-amount').value = ''; this.loadCashRelease(); this.loadDashboard(); this.showToast('Cash Release recorded.'); } else { this.showToast(res.message, 'error'); }
     },
 
-    deleteCashRelease: async function(id) {
-        if(confirm("Delete this cash release record?")) { await this.request('delete_cash_release', { id: id }); this.loadCashRelease(); this.loadDashboard(); this.showToast('Record deleted.'); }
-    },
+    deleteCashRelease: async function(id) { if(confirm("Delete this cash release record?")) { await this.request('delete_cash_release', { id: id }); this.loadCashRelease(); this.loadDashboard(); this.showToast('Record deleted.'); } },
 
     // --- NTP GLOBAL ---
     loadGlobalNTP: async function() {
