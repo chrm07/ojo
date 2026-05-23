@@ -525,7 +525,7 @@ const app = {
             grouped[cat].items.forEach((item, iIdx) => {
                 totalItems++; let isComp = item.status === 'Completed'; if (isComp) completedItems++;
                 const completedClass = isComp ? 'completed' : ''; const checkedAttr = isComp ? 'checked' : '';
-                itemsHtml += `<div class="checklist-item ${completedClass}" id="item-row-${item.id}"><div class="checklist-item-left" onclick="app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})"><input type="checkbox" ${checkedAttr} onclick="event.stopPropagation(); app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})"><label>${item.task_name} <small style="color:var(--success); font-weight:700;" onclick="event.stopPropagation(); app.editChecklistCostDB(${item.id}, ${item.award_cost})">(₱${parseFloat(item.award_cost).toLocaleString('en-US')})</small></label></div><div class="checklist-item-actions"><button class="checklist-action-btn edit" onclick="app.editChecklistItemDB(${item.id}, '${item.task_name.replace(/'/g, "\\'")}')"><i class="fa-solid fa-pencil"></i></button><button class="checklist-action-btn delete" onclick="app.deleteChecklistItemDB(${item.id})"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                itemsHtml += `<div class="checklist-item ${completedClass}" id="item-row-${item.id}"><div class="checklist-item-left" onclick="app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})"><input type="checkbox" ${checkedAttr} onclick="event.stopPropagation(); app.toggleChecklistItemDB(${item.id}, '${isComp ? 'Not Started' : 'Completed'}', '${item.assigned_worker}', ${item.award_cost})"><span class="checklist-task-label">${item.task_name} <small style="color:var(--success); font-weight:700;" onclick="event.stopPropagation(); app.editChecklistCostDB(${item.id}, ${item.award_cost})">(₱${parseFloat(item.award_cost).toLocaleString('en-US')})</small></span></div><div class="checklist-item-actions"><button class="checklist-action-btn edit" onclick="app.editChecklistItemDB(${item.id}, '${item.task_name.replace(/'/g, "\\'")}')"><i class="fa-solid fa-pencil"></i></button><button class="checklist-action-btn delete" onclick="app.deleteChecklistItemDB(${item.id})"><i class="fa-solid fa-trash"></i></button></div></div>`;
             });
             let badgeHtml = grouped[cat].assigned ? `<span class="badge-assigned"><i class="fa-solid fa-user-check"></i> ${grouped[cat].assigned}</span>` : '';
             grid.innerHTML += `<div class="checklist-category"><h4>${cat} ${badgeHtml} <button class="checklist-action-btn delete" style="float:right;" onclick="app.deleteCategoryDB('${cat}')"><i class="fa-solid fa-xmark"></i></button></h4><div id="cat-items-${cIdx}">${itemsHtml}</div><div id="add-task-container-${cIdx}" style="display:none; margin-top:8px;"><input type="text" class="inline-input" id="add-task-input-${cIdx}" placeholder="Type task and press Enter..." onkeydown="if(event.key==='Enter') app.saveNewTaskDB('${cat}', this.value, ${cIdx})" onblur="this.parentElement.style.display='none'; document.getElementById('btn-show-add-${cIdx}').style.display='block';"></div><button id="btn-show-add-${cIdx}" class="add-task-btn" onclick="this.style.display='none'; document.getElementById('add-task-container-${cIdx}').style.display='block'; document.getElementById('add-task-input-${cIdx}').focus();"><i class="fa-solid fa-plus"></i> Add Task</button></div>`;
@@ -933,14 +933,80 @@ const app = {
     },
 
     openArchivedFolder: async function () {
-        document.getElementById('manpower-folders-view').style.display = 'none'; document.getElementById('manpower-table-view').style.display = 'block'; document.getElementById('current-skill-title').innerHTML = `<i class="fa-solid fa-box-archive" style="color:var(--danger);"></i> Archived Manpower`;
-        document.getElementById('table-users').innerHTML = `<thead><tr><th>Name</th><th>Position</th><th>Folder (Skill)</th><th>Date Archived</th><th>Action</th></tr></thead><tbody></tbody>`;
+        const foldersView = document.getElementById('manpower-folders-view');
+        const tableView = document.getElementById('manpower-table-view');
+        const title = document.getElementById('current-skill-title');
+        const table = document.getElementById('table-users');
 
-        const workerList = await this.request('get_archived_manpower'); const tbody = document.querySelector('#table-users tbody'); tbody.innerHTML = '';
-        if (!workerList || workerList.length === 0) { tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No archived records found.</td></tr>`; return; }
+        if (foldersView) foldersView.style.display = 'none';
+        if (tableView) tableView.style.display = 'block';
+
+        if (title) {
+            title.innerHTML = `<i class="fa-solid fa-box-archive" style="color:var(--danger);"></i> Archived Manpower`;
+        }
+
+        if (table) {
+            table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Position</th>
+                    <th>Folder (Skill)</th>
+                    <th>Date Archived</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        `;
+        }
+
+        const tbody = document.querySelector('#table-users tbody');
+        if (!tbody) return;
+
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading archived records...</td></tr>`;
+
+        const response = await this.request('get_archived_manpower');
+
+        const workerList = Array.isArray(response)
+            ? response
+            : Array.isArray(response.data)
+                ? response.data
+                : Array.isArray(response.workers)
+                    ? response.workers
+                    : Array.isArray(response.records)
+                        ? response.records
+                        : [];
+
+        console.log('Archived manpower response:', response);
+        console.log('Archived manpower list:', workerList);
+
+        tbody.innerHTML = '';
+
+        if (workerList.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No archived records found.</td></tr>`;
+            return;
+        }
 
         workerList.forEach(w => {
-            tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${w.name}</b></td><td>${w.position || 'N/A'}</td><td><span class="badge" style="background:#E5E7EB; color:#4B5563;">${w.skills || 'Uncategorized'}</span></td><td style="color:var(--danger); font-weight:700;"><i class="fa-regular fa-clock"></i> ${w.archived_date || 'N/A'}</td><td><button class="btn-success-solid btn" style="height: 26px; padding: 0 10px; font-size: 0.75rem;" onclick="app.restoreManpower(${w.id})"><i class="fa-solid fa-rotate-left"></i> Restore</button></td></tr>`;
+            tbody.innerHTML += `
+            <tr>
+                <td><b style="color:var(--text-dark);">${w.name || 'Unnamed Worker'}</b></td>
+                <td>${w.position || 'N/A'}</td>
+                <td>
+                    <span class="badge" style="background:#E5E7EB; color:#4B5563;">
+                        ${w.skills || 'Uncategorized'}
+                    </span>
+                </td>
+                <td style="color:var(--danger); font-weight:700;">
+                    <i class="fa-regular fa-clock"></i> ${w.archived_date || 'N/A'}
+                </td>
+                <td>
+                    <button class="btn-success-solid btn" style="height: 26px; padding: 0 10px; font-size: 0.75rem;" onclick="app.restoreManpower(${w.id})">
+                        <i class="fa-solid fa-rotate-left"></i> Restore
+                    </button>
+                </td>
+            </tr>
+        `;
         });
     },
 
@@ -1111,10 +1177,76 @@ const app = {
 
     // --- NTP GLOBAL ---
     loadGlobalNTP: async function () {
-        const proj = await this.request('get_projects'); const select = document.getElementById('g-ntp-project');
-        if (select) { select.innerHTML = '<option value="">Select Pending Project</option>'; if (Array.isArray(proj)) { proj.filter(p => (p.status || '').toLowerCase().trim() === 'pending').forEach(p => select.innerHTML += `<option value="${p.id}">${p.name} - ${p.location}</option>`); } }
-        const ntps = await this.request('get_all_ntps'); const tbody = document.querySelector('#table-global-ntp tbody'); if (tbody) tbody.innerHTML = '';
-        if (ntps) { ntps.forEach(n => { let fmtCost = n.award_cost ? '₱' + parseFloat(n.award_cost).toLocaleString('en-US') : 'N/A'; tbody.innerHTML += `<tr><td><b style="color:var(--text-dark);">${n.project_name}</b></td><td>${n.ntp_ticket || 'N/A'}</td><td>${n.date_received}</td><td style="font-weight:700;">${fmtCost}</td><td><b style="color:var(--danger);">${n.due_date || 'N/A'}</b></td><td>${n.acceptance_date || 'N/A'}</td><td><span style="cursor:pointer; color:var(--primary-hover); text-decoration:underline;" onclick="app.viewAttachedFile('${n.file_path}')">View PDF</span></td></tr>`; }); }
+        const proj = await this.request('get_projects');
+        const select = document.getElementById('g-ntp-project');
+
+        if (select) {
+            select.innerHTML = '<option value="">Select Project</option>';
+
+            if (Array.isArray(proj) && proj.length > 0) {
+                const availableProjects = proj.filter(p => {
+                    const status = (p.status || '').toLowerCase().trim();
+
+                    // Lalabas lahat ng project basta hindi completed
+                    return status !== 'completed';
+                });
+
+                if (availableProjects.length > 0) {
+                    availableProjects.forEach(p => {
+                        select.innerHTML += `
+                        <option value="${p.id}">
+                            ${p.name || 'Unnamed Project'} - ${p.location || 'No location'}
+                        </option>
+                    `;
+                    });
+                } else {
+                    select.innerHTML += '<option value="" disabled>No available projects</option>';
+                }
+            } else {
+                select.innerHTML += '<option value="" disabled>No projects found</option>';
+            }
+        }
+
+        const ntps = await this.request('get_all_ntps');
+        const tbody = document.querySelector('#table-global-ntp tbody');
+
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (Array.isArray(ntps) && ntps.length > 0) {
+            ntps.forEach(n => {
+                let fmtCost = n.award_cost
+                    ? '₱' + parseFloat(n.award_cost).toLocaleString('en-US')
+                    : 'N/A';
+
+                tbody.innerHTML += `
+                <tr>
+                    <td><b style="color:var(--text-dark);">${n.project_name || 'N/A'}</b></td>
+                    <td>${n.ntp_ticket || 'N/A'}</td>
+                    <td>${n.date_received || 'N/A'}</td>
+                    <td style="font-weight:700;">${fmtCost}</td>
+                    <td><b style="color:var(--danger);">${n.due_date || 'N/A'}</b></td>
+                    <td>${n.acceptance_date || 'N/A'}</td>
+                    <td>
+                        ${n.file_path
+                        ? `<span style="cursor:pointer; color:var(--primary-hover); text-decoration:underline;" onclick="app.viewAttachedFile('${n.file_path}')">View PDF</span>`
+                        : 'No file'
+                    }
+                    </td>
+                </tr>
+            `;
+            });
+        } else {
+            tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty-state-wrapper">
+                    <i class="fa-solid fa-file-pdf"></i>
+                    <p>No NTP records found.</p>
+                </td>
+            </tr>
+        `;
+        }
     },
     uploadGlobalNTP: async function () {
         const project_id = document.getElementById('g-ntp-project').value; const ticket = document.getElementById('g-ntp-ticket').value; const date = document.getElementById('g-ntp-date').value; const award_cost = document.getElementById('g-ntp-cost').value; const due_date = document.getElementById('g-ntp-due').value; const accept_date = document.getElementById('g-ntp-accept').value; const fileInput = document.getElementById('g-ntp-file');
