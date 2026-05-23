@@ -330,19 +330,175 @@ class ConstructionSystem
         }
     }
 
+
     public function addManpower($name, $skills, $position, $salary, $project_id, $photo)
     {
-        $filePath = null;
-        if ($photo && isset($photo['tmp_name']) && $photo['tmp_name']) {
-            $uploadDir = '../uploads/manpower/';
-            if (!file_exists($uploadDir))
-                mkdir($uploadDir, 0777, true);
-            $fileName = 'MP_' . uniqid() . '.' . pathinfo($photo['name'], PATHINFO_EXTENSION);
-            $filePath = 'uploads/manpower/' . $fileName;
-            move_uploaded_file($photo['tmp_name'], '../' . $filePath);
+        try {
+            $name = trim($name);
+            $skills = trim($skills);
+            $position = trim($position);
+            $salary = trim((string) $salary);
+
+            if ($name === '' || $skills === '' || $position === '' || $salary === '') {
+                return ['status' => 'error', 'message' => 'Please fill in all required fields.'];
+            }
+
+            $salary = preg_replace('/[^0-9.]/', '', $salary);
+
+            if ($salary === '' || !is_numeric($salary)) {
+                return ['status' => 'error', 'message' => 'Invalid salary/rate.'];
+            }
+
+            $filePath = null;
+
+            if ($photo && isset($photo['tmp_name']) && $photo['tmp_name']) {
+                $uploadDir = '../uploads/manpower/';
+
+                if (!file_exists($uploadDir)) {
+                    mkdir($uploadDir, 0777, true);
+                }
+
+                $ext = pathinfo($photo['name'], PATHINFO_EXTENSION);
+                $fileName = 'MP_' . uniqid() . '.' . $ext;
+                $filePath = 'uploads/manpower/' . $fileName;
+
+                move_uploaded_file($photo['tmp_name'], '../' . $filePath);
+            }
+
+            $stmt = $this->pdo->prepare("
+                INSERT INTO manpower (name, skills, position, rate, project_id, photo_path) 
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+
+            $stmt->execute([
+                $name,
+                $skills,
+                $position,
+                $salary,
+                $project_id ?: null,
+                $filePath
+            ]);
+
+            $this->pdo->prepare("
+                INSERT IGNORE INTO skill_categories (name) 
+                VALUES (?)
+            ")->execute([$skills]);
+
+            return ['status' => 'success'];
+        } catch (Exception $e) {
+            return [
+                'status' => 'error',
+                'message' => 'Add manpower failed: ' . $e->getMessage()
+            ];
         }
-        $this->pdo->prepare("INSERT INTO manpower (name, skills, position, rate, project_id, photo_path) VALUES (?, ?, ?, ?, ?, ?)")->execute([$name, $skills, $position, $salary, $project_id ?: null, $filePath]);
-        return ['status' => 'success'];
+    }
+
+    public function bulkAddManpower($itemsJson)
+    {
+        try {
+            $items = json_decode($itemsJson, true);
+
+            if (!is_array($items) || count($items) === 0) {
+                return ['status' => 'error', 'message' => 'No records received.'];
+            }
+
+            $this->pdo->beginTransaction();
+
+            $insertStmt = $this->pdo->prepare("
+            INSERT INTO manpower (name, skills, position, rate, project_id, photo_path)
+            VALUES (?, ?, ?, ?, ?, NULL)
+        ");
+
+            $skillStmt = $this->pdo->prepare("
+            INSERT IGNORE INTO skill_categories (name)
+            VALUES (?)
+        ");
+
+            $projectStmt = $this->pdo->prepare("
+            SELECT id FROM projects 
+            WHERE name = ? OR location = ?
+            LIMIT 1
+        ");
+
+            $inserted = 0;
+            $skipped = [];
+            $projectCache = [];
+
+            foreach ($items as $index => $item) {
+                $lineNumber = $index + 1;
+
+                $name = trim($item['name'] ?? '');
+                $skills = trim($item['skills'] ?? '');
+                $position = trim($item['position'] ?? '');
+                $salaryRaw = trim((string) ($item['salary'] ?? ''));
+                $projectRaw = trim((string) ($item['project'] ?? ''));
+
+                $salary = preg_replace('/[^0-9.]/', '', $salaryRaw);
+
+                if ($name === '' || $skills === '' || $position === '' || $salary === '' || !is_numeric($salary)) {
+                    $skipped[] = [
+                        'line' => $lineNumber,
+                        'reason' => 'Incomplete or invalid data'
+                    ];
+                    continue;
+                }
+
+                $projectId = null;
+
+                if ($projectRaw !== '') {
+                    if (is_numeric($projectRaw)) {
+                        $projectId = (int) $projectRaw;
+                    } else {
+                        $projectKey = strtolower($projectRaw);
+
+                        if (!array_key_exists($projectKey, $projectCache)) {
+                            $projectStmt->execute([$projectRaw, $projectRaw]);
+                            $foundProjectId = $projectStmt->fetchColumn();
+                            $projectCache[$projectKey] = $foundProjectId ?: null;
+                        }
+
+                        $projectId = $projectCache[$projectKey];
+                    }
+                }
+
+                $insertStmt->execute([
+                    $name,
+                    $skills,
+                    $position,
+                    $salary,
+                    $projectId
+                ]);
+
+                $skillStmt->execute([$skills]);
+
+                $inserted++;
+            }
+
+            $this->pdo->commit();
+
+            if ($inserted === 0) {
+                return [
+                    'status' => 'error',
+                    'message' => 'No valid records were added.',
+                    'skipped' => $skipped
+                ];
+            }
+
+            return [
+                'status' => 'success',
+                'inserted' => $inserted,
+                'skipped' => $skipped
+            ];
+        } catch (Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Bulk add failed: ' . $e->getMessage()
+            ];
+        }
     }
 
     public function updateBioData($worker_id, $photo)
@@ -395,22 +551,298 @@ class ConstructionSystem
             return [];
         }
     }
-    public function addPayroll($date, $name, $job, $award_cost, $cash_advance)
+    public function bulkAddAll($module, $itemsJson)
     {
         try {
-            $stmt = $this->pdo->prepare("SELECT id FROM manpower WHERE name = ? LIMIT 1");
-            $stmt->execute([$name]);
-            $worker = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$worker) {
-                $this->pdo->prepare("INSERT INTO manpower (name, position, skills, rate) VALUES (?, 'Worker', 'Uncategorized', 500)")->execute([$name]);
-                $manpower_id = $this->pdo->lastInsertId();
-            } else {
-                $manpower_id = $worker['id'];
+            $module = strtolower(trim($module));
+            $items = json_decode($itemsJson, true);
+
+            if (!is_array($items) || count($items) === 0) {
+                return ['status' => 'error', 'message' => 'No records received.'];
             }
-            $this->pdo->prepare("INSERT INTO payroll (manpower_id, pay_date, job_description, rate, days_worked, gross_pay, deductions, net_pay, award_cost, cash_advance, overall_advance, balance) VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?, ?, 0, 0)")->execute([$manpower_id, $date, $job, $award_cost, $cash_advance]);
-            return ['status' => 'success'];
-        } catch (PDOException $e) {
-            return ['status' => 'error', 'message' => 'SQL Error: ' . $e->getMessage()];
+
+            $allowedModules = [
+                'projects',
+                'suppliers',
+                'inventory',
+                'manpower',
+                'award_costs',
+                'payroll',
+                'cash_release',
+                'ntp'
+            ];
+
+            if (!in_array($module, $allowedModules, true)) {
+                return ['status' => 'error', 'message' => 'Invalid bulk module.'];
+            }
+
+            $inserted = 0;
+            $skipped = [];
+
+            $this->pdo->beginTransaction();
+
+            $projectLookupStmt = $this->pdo->prepare("
+            SELECT id FROM projects 
+            WHERE id = ? OR name = ? OR location = ? 
+            LIMIT 1
+        ");
+
+            foreach ($items as $index => $item) {
+                $lineNumber = $index + 1;
+
+                try {
+                    if ($module === 'projects') {
+                        $name = trim($item['name'] ?? '');
+                        $client = trim($item['client'] ?? '');
+                        $location = trim($item['location'] ?? '');
+                        $desc = trim($item['description'] ?? '');
+                        $foreman = trim($item['foreman'] ?? '');
+                        $startDate = trim($item['start_date'] ?? '');
+
+                        if ($name === '' || $location === '' || $foreman === '' || $startDate === '') {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Project name, location, foreman, and start date are required.'];
+                            continue;
+                        }
+
+                        $stmt = $this->pdo->prepare("
+                        INSERT INTO projects 
+                        (name, client_name, location, description, foreman, start_date, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, 'ongoing')
+                    ");
+                        $stmt->execute([$name, $client ?: '-', $location, $desc, $foreman, $startDate]);
+
+                        $projectId = $this->pdo->lastInsertId();
+
+                        try {
+                            $this->pdo->prepare("INSERT INTO project_costs (project_id) VALUES (?)")->execute([$projectId]);
+                        } catch (Exception $e) {
+                        }
+
+                        $this->generateDefaultChecklist($projectId);
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'suppliers') {
+                        $name = trim($item['name'] ?? '');
+                        $materials = trim($item['materials'] ?? '');
+                        $contact = trim($item['contact'] ?? '');
+                        $email = trim($item['email'] ?? '');
+
+                        if ($name === '' || $materials === '' || $contact === '') {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Supplier name, materials, and contact are required.'];
+                            continue;
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT INTO suppliers (name, materials, contact, email, status) 
+                        VALUES (?, ?, ?, ?, 'Active')
+                    ")->execute([$name, $materials, $contact, $email]);
+
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'inventory') {
+                        $name = trim($item['name'] ?? '');
+                        $category = trim($item['category'] ?? '');
+                        $qty = preg_replace('/[^0-9.]/', '', (string) ($item['qty'] ?? ''));
+                        $unit = trim($item['unit'] ?? '');
+                        $cost = preg_replace('/[^0-9.]/', '', (string) ($item['cost'] ?? ''));
+                        $supplier = trim($item['supplier'] ?? '');
+
+                        if ($name === '' || $category === '' || $qty === '' || $unit === '' || $cost === '' || !is_numeric($qty) || !is_numeric($cost)) {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Item name, category, quantity, unit, and cost are required.'];
+                            continue;
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT IGNORE INTO inventory_categories (name) 
+                        VALUES (?)
+                    ")->execute([$category]);
+
+                        $this->pdo->prepare("
+                        INSERT INTO inventory (name, category, stock, unit, unit_cost, supplier) 
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ")->execute([$name, $category, $qty, $unit, $cost, $supplier]);
+
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'manpower') {
+                        $name = trim($item['name'] ?? '');
+                        $skills = trim($item['skills'] ?? '');
+                        $position = trim($item['position'] ?? '');
+                        $salary = preg_replace('/[^0-9.]/', '', (string) ($item['salary'] ?? ''));
+                        $projectRaw = trim((string) ($item['project'] ?? ''));
+                        $projectId = null;
+
+                        if ($name === '' || $skills === '' || $position === '' || $salary === '' || !is_numeric($salary)) {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Name, skills, position, and daily rate are required.'];
+                            continue;
+                        }
+
+                        if ($projectRaw !== '') {
+                            $projectLookupStmt->execute([$projectRaw, $projectRaw, $projectRaw]);
+                            $projectId = $projectLookupStmt->fetchColumn() ?: null;
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT INTO manpower (name, skills, position, rate, project_id, photo_path) 
+                        VALUES (?, ?, ?, ?, ?, NULL)
+                    ")->execute([$name, $skills, $position, $salary, $projectId]);
+
+                        $this->pdo->prepare("
+                        INSERT IGNORE INTO skill_categories (name) 
+                        VALUES (?)
+                    ")->execute([$skills]);
+
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'award_costs') {
+                        $desc = trim($item['description'] ?? '');
+                        $amount = preg_replace('/[^0-9.]/', '', (string) ($item['amount'] ?? ''));
+
+                        if ($desc === '' || $amount === '' || !is_numeric($amount)) {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Scope of work and amount are required.'];
+                            continue;
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT INTO award_costs (scope_of_work, amount) 
+                        VALUES (?, ?)
+                    ")->execute([$desc, $amount]);
+
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'payroll') {
+                        $date = trim($item['date'] ?? '');
+                        $name = trim($item['name'] ?? '');
+                        $job = trim($item['job_desc'] ?? '');
+                        $award = preg_replace('/[^0-9.]/', '', (string) ($item['award'] ?? '0'));
+                        $advance = preg_replace('/[^0-9.]/', '', (string) ($item['advance'] ?? '0'));
+
+                        if ($date === '' || $name === '' || $job === '') {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Date, name, and job description are required.'];
+                            continue;
+                        }
+
+                        $stmt = $this->pdo->prepare("SELECT id FROM manpower WHERE name = ? LIMIT 1");
+                        $stmt->execute([$name]);
+                        $worker = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                        if (!$worker) {
+                            $this->pdo->prepare("
+                            INSERT INTO manpower (name, position, skills, rate) 
+                            VALUES (?, 'Worker', 'Uncategorized', 500)
+                        ")->execute([$name]);
+
+                            $manpowerId = $this->pdo->lastInsertId();
+                        } else {
+                            $manpowerId = $worker['id'];
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT INTO payroll 
+                        (manpower_id, pay_date, job_description, rate, days_worked, gross_pay, deductions, net_pay, award_cost, cash_advance, overall_advance, balance) 
+                        VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?, ?, 0, 0)
+                    ")->execute([$manpowerId, $date, $job, $award ?: 0, $advance ?: 0]);
+
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'cash_release') {
+                        $date = trim($item['date'] ?? '');
+                        $category = trim($item['category'] ?? '');
+                        $name = trim($item['name'] ?? '');
+                        $desc = trim($item['description'] ?? '');
+                        $amount = preg_replace('/[^0-9.]/', '', (string) ($item['amount'] ?? ''));
+
+                        if ($date === '' || $category === '' || $name === '' || $amount === '' || !is_numeric($amount)) {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Date, category, name, and amount are required.'];
+                            continue;
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT INTO cash_releases (release_date, category, name, description, amount) 
+                        VALUES (?, ?, ?, ?, ?)
+                    ")->execute([$date, $category, $name, $desc, $amount]);
+
+                        $inserted++;
+                        continue;
+                    }
+
+                    if ($module === 'ntp') {
+                        $projectRaw = trim((string) ($item['project'] ?? ''));
+                        $ticket = trim($item['ticket'] ?? '');
+                        $date = trim($item['date'] ?? '');
+                        $awardCost = preg_replace('/[^0-9.]/', '', (string) ($item['award_cost'] ?? '0'));
+                        $dueDate = trim($item['due_date'] ?? '');
+                        $acceptDate = trim($item['accept_date'] ?? '');
+
+                        if ($projectRaw === '' || $date === '' || $dueDate === '') {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Project, date received, and due date are required.'];
+                            continue;
+                        }
+
+                        $projectLookupStmt->execute([$projectRaw, $projectRaw, $projectRaw]);
+                        $projectId = $projectLookupStmt->fetchColumn();
+
+                        if (!$projectId) {
+                            $skipped[] = ['line' => $lineNumber, 'reason' => 'Project not found. Use project ID or exact project/location name.'];
+                            continue;
+                        }
+
+                        $this->pdo->prepare("
+                        INSERT INTO project_ntp 
+                        (project_id, ntp_ticket, date_received, award_cost, due_date, acceptance_date, file_path) 
+                        VALUES (?, ?, ?, ?, ?, ?, '')
+                    ")->execute([$projectId, $ticket, $date, $awardCost ?: 0, $dueDate, $acceptDate]);
+
+                        $this->pdo->prepare("
+                        UPDATE projects SET status = 'ongoing' WHERE id = ?
+                    ")->execute([$projectId]);
+
+                        $inserted++;
+                        continue;
+                    }
+                } catch (Exception $rowError) {
+                    $skipped[] = ['line' => $lineNumber, 'reason' => $rowError->getMessage()];
+                    continue;
+                }
+            }
+
+            $this->pdo->commit();
+
+            if ($inserted === 0) {
+                return [
+                    'status' => 'error',
+                    'message' => 'No valid records were added.',
+                    'inserted' => 0,
+                    'skipped' => $skipped
+                ];
+            }
+
+            return [
+                'status' => 'success',
+                'inserted' => $inserted,
+                'skipped' => $skipped
+            ];
+        } catch (Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            return [
+                'status' => 'error',
+                'message' => 'Bulk add failed: ' . $e->getMessage()
+            ];
         }
     }
     public function deletePayrollEntry($id)

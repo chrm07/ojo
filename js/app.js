@@ -810,32 +810,40 @@ const app = {
                 const showingTo = Math.min(endIndex, totalRecords);
 
                 pager.innerHTML = `
-                <div class="pagination-info">
-                    Showing <b>${showingFrom}</b>-${showingTo} of <b>${totalRecords}</b> folders
-                </div>
+    <div class="pagination-info">
+        Showing <b>${showingFrom}</b>-${showingTo} of <b>${totalRecords}</b> folders
+    </div>
 
-                <div class="pagination-actions">
-                    <button 
-                        type="button" 
-                        class="pagination-btn" 
-                        onclick="app.changeManpowerFolderPage(${this.manpowerFolderPage - 1})"
-                        ${this.manpowerFolderPage === 1 ? 'disabled' : ''}
-                    >
-                        <i class="fa-solid fa-chevron-left"></i> Previous
-                    </button>
+    <div class="pagination-actions">
+        <button 
+            type="button" 
+            class="pagination-btn" 
+            onclick="app.openModal('modal-bulk-manpower')"
+        >
+            <i class="fa-solid fa-users"></i> Bulk Add
+        </button>
 
-                    <span class="pagination-page">Page ${this.manpowerFolderPage} of ${totalPages}</span>
+        <button 
+            type="button" 
+            class="pagination-btn" 
+            onclick="app.changeManpowerFolderPage(${this.manpowerFolderPage - 1})"
+            ${this.manpowerFolderPage === 1 ? 'disabled' : ''}
+        >
+            <i class="fa-solid fa-chevron-left"></i> Previous
+        </button>
 
-                    <button 
-                        type="button" 
-                        class="pagination-btn" 
-                        onclick="app.changeManpowerFolderPage(${this.manpowerFolderPage + 1})"
-                        ${this.manpowerFolderPage === totalPages ? 'disabled' : ''}
-                    >
-                        Next <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
-            `;
+        <span class="pagination-page">Page ${this.manpowerFolderPage} of ${totalPages}</span>
+
+        <button 
+            type="button" 
+            class="pagination-btn" 
+            onclick="app.changeManpowerFolderPage(${this.manpowerFolderPage + 1})"
+            ${this.manpowerFolderPage === totalPages ? 'disabled' : ''}
+        >
+            Next <i class="fa-solid fa-chevron-right"></i>
+        </button>
+    </div>
+`;
 
                 grid.parentNode.appendChild(pager);
             }
@@ -1254,6 +1262,217 @@ const app = {
         const fd = new FormData(); fd.append('project_id', project_id); fd.append('ticket', ticket); fd.append('date', date); fd.append('award_cost', award_cost); fd.append('due_date', due_date); fd.append('accept_date', accept_date); fd.append('file', fileInput.files[0]);
         const res = await this.request('upload_ntp_file', fd, true);
         if (res.status === 'success') { document.getElementById('g-ntp-ticket').value = ''; document.getElementById('g-ntp-cost').value = ''; document.getElementById('g-ntp-accept').value = ''; document.getElementById('g-ntp-file').value = ''; await this.loadGlobalNTP(); this.loadDashboard(); this.showToast("NTP Successfully uploaded!"); } else { this.showToast(res.message, 'error'); }
+    },
+
+    openBulkAdd: function (module = 'projects') {
+        const modal = document.getElementById('modal-bulk-all');
+        const select = document.getElementById('bulk-all-module');
+        const textarea = document.getElementById('bulk-all-textarea');
+
+        if (!modal || !select || !textarea) return;
+
+        select.value = module || 'projects';
+        this.updateBulkTemplate();
+        modal.style.display = 'flex';
+    },
+
+    updateBulkTemplate: function () {
+        const select = document.getElementById('bulk-all-module');
+        const format = document.getElementById('bulk-all-format');
+        const example = document.getElementById('bulk-all-example');
+        const textarea = document.getElementById('bulk-all-textarea');
+
+        if (!select || !format || !example || !textarea) return;
+
+        const templates = {
+            projects: {
+                format: 'Project Name, Client, Location, Description, Foreman, Start Date YYYY-MM-DD',
+                example: 'Project A, Client One, Laguna, Two storey house, Juan Foreman, 2026-06-01'
+            },
+            suppliers: {
+                format: 'Supplier Name, Materials, Contact, Email optional',
+                example: 'ABC Hardware, "Cement, Sand, Gravel", 09123456789, abc@email.com'
+            },
+            inventory: {
+                format: 'Item Name, Category, Quantity, Unit, Unit Cost, Supplier optional',
+                example: 'Cement, Construction Materials, 100, bags, 280, ABC Hardware'
+            },
+            manpower: {
+                format: 'Full Name, Skills, Position, Daily Rate, Project Name or Project ID optional',
+                example: 'Juan Dela Cruz, Mason, Worker, 700, Project A'
+            },
+            award_costs: {
+                format: 'Scope of Work, Amount',
+                example: 'CHB Laying, 15000'
+            },
+            payroll: {
+                format: 'Date YYYY-MM-DD, Worker Name, Job Description, Award Cost, Cash Advance',
+                example: '2026-06-01, Juan Dela Cruz, CHB Laying, 1500, 500'
+            },
+            cash_release: {
+                format: 'Date YYYY-MM-DD, Category, Name, Description, Amount',
+                example: '2026-06-01, Material, Cement Purchase, 20 bags cement, 5600'
+            },
+            ntp: {
+                format: 'Project Name or ID, NTP Ticket, Date Received YYYY-MM-DD, Award Cost, Due Date YYYY-MM-DD, Acceptance Date optional',
+                example: 'Project A, NTP-001, 2026-06-01, 50000, 2026-06-10, 2026-06-02'
+            }
+        };
+
+        const picked = templates[select.value] || templates.projects;
+
+        format.textContent = picked.format;
+        example.textContent = picked.example;
+        textarea.placeholder = picked.example + '\n' + picked.example;
+    },
+
+    parseCSVLine: function (line) {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const nextChar = line[i + 1];
+
+            if (char === '"' && inQuotes && nextChar === '"') {
+                current += '"';
+                i++;
+                continue;
+            }
+
+            if (char === '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+                continue;
+            }
+
+            current += char;
+        }
+
+        result.push(current.trim());
+        return result;
+    },
+
+    parseBulkRows: function (module, rawText) {
+        const mappings = {
+            projects: ['name', 'client', 'location', 'description', 'foreman', 'start_date'],
+            suppliers: ['name', 'materials', 'contact', 'email'],
+            inventory: ['name', 'category', 'qty', 'unit', 'cost', 'supplier'],
+            manpower: ['name', 'skills', 'position', 'salary', 'project'],
+            award_costs: ['description', 'amount'],
+            payroll: ['date', 'name', 'job_desc', 'award', 'advance'],
+            cash_release: ['date', 'category', 'name', 'description', 'amount'],
+            ntp: ['project', 'ticket', 'date', 'award_cost', 'due_date', 'accept_date']
+        };
+
+        const keys = mappings[module];
+        if (!keys) return [];
+
+        return rawText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line !== '')
+            .map(line => {
+                const parts = this.parseCSVLine(line);
+                const item = {};
+
+                keys.forEach((key, index) => {
+                    item[key] = parts[index] || '';
+                });
+
+                return item;
+            });
+    },
+
+    bulkAddAll: async function () {
+        const moduleSelect = document.getElementById('bulk-all-module');
+        const textarea = document.getElementById('bulk-all-textarea');
+
+        if (!moduleSelect || !textarea) return;
+
+        const module = moduleSelect.value;
+        const rawText = (textarea.value || '').trim();
+
+        if (!module) {
+            this.showToast('Please select a module.', 'error');
+            return;
+        }
+
+        if (!rawText) {
+            this.showToast('Please paste at least one record.', 'error');
+            return;
+        }
+
+        const items = this.parseBulkRows(module, rawText);
+
+        if (!items.length) {
+            this.showToast('No valid rows found.', 'error');
+            return;
+        }
+
+        const res = await this.request('bulk_add_all', {
+            module,
+            items: JSON.stringify(items)
+        });
+
+        if (res.status === 'success') {
+            textarea.value = '';
+            this.closeModal('modal-bulk-all');
+            window.globalSearchData = null;
+
+            if (module === 'projects') {
+                this.loadProjects();
+                this.loadDashboard();
+                this.loadProjectOptionsForManpower();
+            }
+
+            if (module === 'suppliers' || module === 'inventory') {
+                this.loadSuppliersDashboard();
+            }
+
+            if (module === 'manpower') {
+                this.populateManpowerDropdowns();
+                this.loadManpowerFolders();
+                this.loadDashboard();
+                this.populateForemanDropdown();
+            }
+
+            if (module === 'award_costs') {
+                this.loadAwardCosts();
+            }
+
+            if (module === 'payroll') {
+                this.renderPayrollTab();
+                this.populatePayrollDatalists();
+                this.loadDashboard();
+            }
+
+            if (module === 'cash_release') {
+                this.loadCashRelease();
+                this.loadDashboard();
+            }
+
+            if (module === 'ntp') {
+                this.loadGlobalNTP();
+            }
+
+            const skippedCount = Array.isArray(res.skipped) ? res.skipped.length : 0;
+            const skippedText = skippedCount ? ` Skipped: ${skippedCount}.` : '';
+
+            this.showToast(`${res.inserted || items.length} record(s) added successfully.${skippedText}`);
+        } else {
+            this.showToast(res.message || 'Bulk add failed.', 'error');
+
+            if (Array.isArray(res.skipped) && res.skipped.length) {
+                console.table(res.skipped);
+            }
+        }
     }
 };
 

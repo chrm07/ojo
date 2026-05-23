@@ -176,6 +176,10 @@ switch ($action) {
         ));
         break;
 
+    case 'bulk_add_manpower':
+        echo json_encode($app->bulkAddManpower($_POST['items'] ?? '[]'));
+        break;
+
     case 'update_bio_data':
         echo json_encode($app->updateBioData($_POST['worker_id'] ?? '', $_FILES['photo'] ?? null));
         break;

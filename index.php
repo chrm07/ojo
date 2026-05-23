@@ -89,6 +89,7 @@
                     <button class="clear-search-btn" id="clear-search-btn" onclick="app.clearGlobalSearch()"><i
                             class="fa-solid fa-circle-xmark"></i></button>
                 </div>
+
                 <div class="header-right">
                     <div class="user-profile">
                         <img src="https://ui-avatars.com/api/?name=Admin&background=FACC15&color=000&bold=true"
@@ -179,23 +180,33 @@
                             <input type="text" id="proj-client" placeholder="Client Name">
                             <input type="text" id="proj-loc" placeholder="Location / Phase">
                             <input type="text" id="proj-desc" placeholder="Model / Description">
+
                             <select id="proj-foreman">
                                 <option value="">Select Site Foreman / In-Charge</option>
                             </select>
+
                             <input type="date" id="proj-start" title="Start Date">
+
                             <div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 10px;">
                                 <label id="file-dropzone-label" for="proj-ntp-init" class="btn-outline"
                                     style="cursor: pointer; width: 100%; justify-content: flex-start; border-style: dashed; border-width: 2px; color: var(--text-muted); border-color: #D1D5DB; font-weight: 600;">
-                                    <i class="fa-solid fa-file-arrow-up"></i> <span id="file-name-display">Attach
-                                        Initial NTP Document (Optional)</span>
+                                    <i class="fa-solid fa-file-arrow-up"></i>
+                                    <span id="file-name-display">Attach Initial NTP Document (Optional)</span>
                                 </label>
+
                                 <input type="file" id="proj-ntp-init" style="display: none;" accept=".pdf, image/*"
                                     onchange="app.handleFileSelect(this)">
                             </div>
+
                             <div
-                                style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 4px;">
-                                <button type="button" class="btn" onclick="app.submitProjectForm()"><i
-                                        class="fa-solid fa-plus"></i> Create Project</button>
+                                style="grid-column: 1 / -1; display: flex; justify-content: flex-end; gap:8px; margin-top: 4px;">
+                                <button type="button" class="btn-outline" onclick="app.openBulkAdd('projects')">
+                                    <i class="fa-solid fa-layer-group"></i> Bulk Add
+                                </button>
+
+                                <button type="button" class="btn" onclick="app.submitProjectForm()">
+                                    <i class="fa-solid fa-plus"></i> Create Project
+                                </button>
                             </div>
                         </div>
                         <div
@@ -424,8 +435,15 @@
                                     Supplier
                                     Directory</h3>
                             </div>
-                            <button class="btn" onclick="app.openModal('modal-add-supplier')"><i
-                                    class="fa-solid fa-plus"></i> Add New Supplier</button>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button type="button" class="btn-outline" onclick="app.openBulkAdd('suppliers')">
+                                    <i class="fa-solid fa-layer-group"></i> Bulk Add
+                                </button>
+
+                                <button type="button" class="btn" onclick="app.openModal('modal-add-supplier')">
+                                    <i class="fa-solid fa-plus"></i> Add New Supplier
+                                </button>
+                            </div>
                         </div>
                         <div class="table-responsive">
                             <table class="sheet-table" id="table-suppliers">
@@ -450,8 +468,15 @@
                                     Inventory
                                 </h3>
                             </div>
-                            <button class="btn" onclick="app.openModal('modal-add-stock')"><i
-                                    class="fa-solid fa-box-open"></i> Add Stock</button>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button type="button" class="btn-outline" onclick="app.openBulkAdd('inventory')">
+                                    <i class="fa-solid fa-layer-group"></i> Bulk Add
+                                </button>
+
+                                <button type="button" class="btn" onclick="app.openModal('modal-add-stock')">
+                                    <i class="fa-solid fa-box-open"></i> Add Stock
+                                </button>
+                            </div>
                         </div>
                         <div class="table-responsive">
                             <table class="sheet-table" id="table-inventory">
@@ -488,9 +513,15 @@
                                 <option value="">Select Project</option>
                             </select>
                             <input type="file" id="man-photo" accept="image/*">
-                            <div style="grid-column: 1/-1; display:flex; justify-content:flex-end;">
-                                <button class="btn" onclick="app.addManpower()"><i class="fa-solid fa-check"></i> Add
-                                    Record</button>
+                            <div
+                                style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+                                <button type="button" class="btn-outline" onclick="app.openBulkAdd('manpower')">
+                                    <i class="fa-solid fa-users"></i> Bulk Add
+                                </button>
+
+                                <button type="button" class="btn" onclick="app.addManpower()">
+                                    <i class="fa-solid fa-check"></i> Add Record
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -535,8 +566,16 @@
                     <div class="form-grid">
                         <input type="text" id="awd-desc" placeholder="Job Description (e.g. Roofing)" required>
                         <input type="number" id="awd-amount" placeholder="Amount (₱)" required>
-                        <button class="btn" onclick="app.addAwardCost()"><i class="fa-solid fa-plus"></i> Add
-                            Description</button>
+
+                        <div style="display:flex; gap:8px; justify-content:flex-end;">
+                            <button type="button" class="btn-outline" onclick="app.openBulkAdd('award_costs')">
+                                <i class="fa-solid fa-layer-group"></i> Bulk Add
+                            </button>
+
+                            <button type="button" class="btn" onclick="app.addAwardCost()">
+                                <i class="fa-solid fa-plus"></i> Add Description
+                            </button>
+                        </div>
                     </div>
                     <div class="table-responsive">
                         <table class="sheet-table" id="table-award-costs">
@@ -585,11 +624,18 @@
                             <input type="text" id="pay-advance" placeholder="Cash Advance (₱)"
                                 oninput="app.formatCurrencyInput(this)">
                             <div
-                                style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-                                <button class="btn-outline" onclick="app.clearPayrollForm()"><i
-                                        class="fa-solid fa-eraser"></i> Clear</button>
-                                <button class="btn-yellow-solid btn" onclick="app.addManualPayroll()"><i
-                                        class="fa-solid fa-plus"></i> Add to Payslip</button>
+                                style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:8px; margin-top:4px; flex-wrap:wrap;">
+                                <button type="button" class="btn-outline" onclick="app.openBulkAdd('payroll')">
+                                    <i class="fa-solid fa-layer-group"></i> Bulk Add
+                                </button>
+
+                                <button type="button" class="btn-outline" onclick="app.clearPayrollForm()">
+                                    <i class="fa-solid fa-eraser"></i> Clear
+                                </button>
+
+                                <button type="button" class="btn-yellow-solid btn" onclick="app.addManualPayroll()">
+                                    <i class="fa-solid fa-plus"></i> Add to Payslip
+                                </button>
                             </div>
                         </div>
 
@@ -691,20 +737,29 @@
                     </div>
 
                     <div class="form-grid"
-                        style="grid-template-columns: 1fr 1fr 1.5fr 2fr 1.5fr auto; align-items:center;">
+                        style="grid-template-columns: 1fr 1fr 1.5fr 2fr 1.5fr auto auto; align-items:center;">
                         <input type="date" id="cr-date" required title="Release Date">
+
                         <select id="cr-category">
                             <option value="">Select Category</option>
                             <option value="Material">Material</option>
                             <option value="Labor">Labor</option>
                             <option value="Other Expenses">Other Expenses</option>
                         </select>
+
                         <input type="text" id="cr-name" placeholder="Receiver Name">
                         <input type="text" id="cr-desc" placeholder="Particulars / Description">
+
                         <input type="text" id="cr-amount" placeholder="Amount (₱)"
                             oninput="app.formatCurrencyInput(this)">
-                        <button class="btn" onclick="app.addCashRelease()"><i class="fa-solid fa-plus"></i> Add
-                            Record</button>
+
+                        <button type="button" class="btn-outline" onclick="app.openBulkAdd('cash_release')">
+                            <i class="fa-solid fa-layer-group"></i> Bulk Add
+                        </button>
+
+                        <button type="button" class="btn" onclick="app.addCashRelease()">
+                            <i class="fa-solid fa-plus"></i> Add Record
+                        </button>
                     </div>
 
                     <div class="table-responsive" style="margin-top: 20px;">
@@ -742,9 +797,15 @@
                         <input type="date" id="g-ntp-accept" title="Acceptance Date">
                         <label for="g-ntp-file" class="sr-only">NTP File</label>
                         <input type="file" id="g-ntp-file" accept=".pdf, image/*">
-                        <div style="grid-column: 1/-1; display:flex; justify-content:flex-end;">
-                            <button class="btn" onclick="app.uploadGlobalNTP()"><i class="fa-solid fa-upload"></i>
-                                Upload NTP</button>
+                        <div
+                            style="grid-column: 1/-1; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+                            <button type="button" class="btn-outline" onclick="app.openBulkAdd('ntp')">
+                                <i class="fa-solid fa-layer-group"></i> Bulk Add
+                            </button>
+
+                            <button type="button" class="btn" onclick="app.uploadGlobalNTP()">
+                                <i class="fa-solid fa-upload"></i> Upload NTP
+                            </button>
                         </div>
                     </div>
                     <div class="table-responsive">
@@ -901,6 +962,61 @@
             style="margin:auto; display:block; max-width:80%; max-height:90vh; margin-top:5vh; border-radius: var(--radius-md); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
     </div>
 
+    <div id="modal-bulk-all" class="modal-overlay" onclick="app.closeModalOnBackdrop(event, 'modal-bulk-all')"
+        style="display: none;">
+        <div class="modal-container bulk-all-modal">
+            <div class="modal-header">
+                <h3>
+                    <i class="fa-solid fa-layer-group" style="color: var(--primary-hover);"></i>
+                    Bulk Add Records
+                </h3>
+                <button class="modal-close" onclick="app.closeModal('modal-bulk-all')">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <label class="modal-label" for="bulk-all-module">Choose module</label>
+                <select id="bulk-all-module" onchange="app.updateBulkTemplate()">
+                    <option value="projects">Projects / Sites</option>
+                    <option value="suppliers">Suppliers</option>
+                    <option value="inventory">Inventory / Stock</option>
+                    <option value="manpower">Manpower / Record List</option>
+                    <option value="award_costs">Award Costs</option>
+                    <option value="payroll">Payroll</option>
+                    <option value="cash_release">Cash Release</option>
+                    <option value="ntp">Notice to Proceed</option>
+                </select>
+
+                <div class="bulk-example-box">
+                    <b>Format per line:</b>
+                    <span id="bulk-all-format">Project Name, Client, Location, Description, Foreman, Start Date
+                        YYYY-MM-DD</span>
+                    <small>Example:</small>
+                    <code
+                        id="bulk-all-example">Project A, Client One, Laguna, Two storey house, Juan Foreman, 2026-06-01</code>
+                </div>
+
+                <label class="modal-label" for="bulk-all-textarea">Paste records here</label>
+                <textarea id="bulk-all-textarea"
+                    placeholder="Project A, Client One, Laguna, Two storey house, Juan Foreman, 2026-06-01"></textarea>
+
+                <p class="bulk-note">
+                    Use one record per line. Use <b>comma (,)</b> as separator.
+                    Press <b>Enter</b> kapag panibagong record/tao/item na.
+                    Kapag may comma sa loob ng isang field, lagyan ng quotes, example:
+                    <b>"Cement, Sand, Gravel"</b>.
+                </p>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-outline" onclick="app.closeModal('modal-bulk-all')">Cancel</button>
+                <button class="btn" onclick="app.bulkAddAll()">
+                    <i class="fa-solid fa-upload"></i> Save Bulk Records
+                </button>
+            </div>
+        </div>
+    </div>
     <script src="js/app.js?v=<?php echo time(); ?>"></script>
 </body>
 
